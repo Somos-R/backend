@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.domains.users.enums import UserType, VerificationStatus
+from app.domains.users.enums import DocumentType, UserType, VerificationStatus
 
 
 class User(Base):
@@ -30,6 +30,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    id_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType), nullable=False)
+    id_number: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
     user_type: Mapped[UserType] = mapped_column(Enum(UserType), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -52,9 +54,6 @@ class User(Base):
     representation_document: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # --- recycler ---
-    id_number: Mapped[str | None] = mapped_column(
-        String(20), unique=True, index=True, nullable=True
-    )
     profile_picture: Mapped[str | None] = mapped_column(Text, nullable=True)
     id_picture: Mapped[str | None] = mapped_column(Text, nullable=True)
     verification_status: Mapped[VerificationStatus | None] = mapped_column(
