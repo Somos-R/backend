@@ -12,20 +12,14 @@ API REST del proyecto **Somos R**: plataforma de gestión de reciclaje que conec
 
 ## Requisitos previos
 
-Asegúrate de tener instalado:
+El entorno local corre **completamente en Docker**. Solo necesitas:
 
-| Herramienta | Versión mínima | Verificar |
-|-------------|---------------|-----------|
-| Python | 3.11 | `python --version` |
-| Poetry | 1.8+ | `poetry --version` |
-| Docker Desktop | cualquiera | `docker --version` |
-| Git | cualquiera | `git --version` |
+| Herramienta | Verificar |
+|-------------|-----------|
+| Docker Desktop | `docker --version` |
+| Git | `git --version` |
 
-> **Poetry no instalado?**
-> ```bash
-> pip install pipx && pipx install poetry && pipx ensurepath
-> ```
-> Luego abre una nueva terminal.
+> No necesitas instalar Python, Poetry ni PostgreSQL en tu máquina.
 
 ---
 
@@ -38,25 +32,13 @@ cd backend
 
 ---
 
-## 2. Instalar dependencias
+## 2. Configurar variables de entorno
 
 ```bash
-poetry install
+cp .env.example .env.local
 ```
 
-Esto crea un virtualenv aislado e instala todas las dependencias (producción + dev) definidas en `pyproject.toml`.
-
----
-
-## 3. Configurar variables de entorno
-
-Crea el archivo `.env.local` en la raíz del proyecto. **Este archivo nunca se commitea.**
-
-```bash
-cp .env.example .env.local   # si existe el ejemplo, o créalo manualmente
-```
-
-Contenido mínimo para desarrollo local:
+El archivo `.env.local` **nunca se commitea**. Contenido mínimo para desarrollo local:
 
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/somos_r_dev
@@ -65,74 +47,86 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
+> El `DATABASE_URL` en `.env.local` usa `localhost` para herramientas externas.
+> Dentro de los contenedores, docker-compose sobreescribe esta variable usando `postgres` como host (nombre del servicio).
+
 ---
 
-## 4. Levantar la base de datos
+## 3. Levantar el entorno completo
 
-La base de datos corre en Docker. Usa el siguiente comando desde la raíz del proyecto:
+La primera vez construye la imagen y levanta todos los servicios:
+
+```bash
+docker compose up --build -d
+```
+
+Las siguientes veces (sin cambios en dependencias):
 
 ```bash
 docker compose up -d
 ```
 
-Esto levanta el container `somos-r-db` con:
-- **Imagen:** `postgis/postgis:15-3.4`
-- **Base de datos:** `somos_r_dev`
-- **Usuario:** `postgres` / **Contraseña:** `postgres`
-- **Puerto:** `5432`
-- **Extensiones habilitadas automáticamente:** `postgis`, `uuid-ossp`
+Esto levanta tres contenedores:
 
-Para verificar que está corriendo:
+| Contenedor | Descripción | Puerto |
+|------------|-------------|--------|
+| `somos-r-db` | PostgreSQL 15 + PostGIS | `5432` |
+| `somos-r-backend` | FastAPI con hot-reload | `8000` |
+| `somos-r-pgadmin` | Interfaz web para la DB (opcional) | `5050` |
 
-```bash
-docker compose exec postgres pg_isready -U postgres -d somos_r_dev
-# Resultado esperado: /var/run/postgresql:5432 - accepting connections
-```
-
-Para verificar PostGIS:
+Para verificar que todo está corriendo:
 
 ```bash
-docker compose exec postgres psql -U postgres -d somos_r_dev -c "SELECT PostGIS_Version();"
+docker compose ps
 ```
 
 ---
 
-## 5. Ejecutar migraciones
+## 4. Ejecutar migraciones
 
-Con la DB corriendo, aplica las migraciones con Alembic:
+Las migraciones actualizan el esquema de la base de datos según los modelos definidos en el código. **Deben ejecutarse dentro del contenedor de la app** (no en tu máquina local), porque es ahí donde están instaladas las dependencias.
 
-```bash
-poetry run alembic upgrade head
-```
-
-Para ver el estado actual de las migraciones:
+Con los contenedores corriendo, ejecuta:
 
 ```bash
-poetry run alembic current
+docker compose exec app poetry run alembic upgrade head
 ```
 
-Para ver el historial:
+Para verificar que se aplicaron correctamente:
 
 ```bash
-poetry run alembic history
+docker compose exec app poetry run alembic current
 ```
+
+Cada vez que el equipo agregue nuevos modelos o campos a la base de datos, habrá migraciones nuevas en `migrations/versions/`. Deberás volver a correr `alembic upgrade head` para aplicarlas.
 
 ---
 
-## 6. Levantar el servidor de desarrollo
+## 5. Verificar el servidor
 
-```bash
-poetry run uvicorn app.main:app --reload
-```
-
-El servidor queda disponible en:
+El servidor arranca automáticamente con hot-reload. Accede en:
 
 - **API:** http://localhost:8000
 - **Documentación interactiva (Swagger):** http://localhost:8000/docs
 - **Documentación alternativa (ReDoc):** http://localhost:8000/redoc
 - **Health check:** http://localhost:8000/health
 
-El flag `--reload` reinicia el servidor automáticamente al detectar cambios en el código.
+Cualquier cambio en el código se refleja automáticamente sin reiniciar el contenedor.
+
+---
+
+## pgAdmin (interfaz gráfica para la DB)
+
+Accede en http://localhost:5050 con:
+- **Email:** `admin@somosr.com`
+- **Password:** `admin`
+
+Para conectarte a la base de datos desde pgAdmin, crea un servidor con:
+- **Host:** `postgres` (nombre del servicio Docker, no `localhost`)
+- **Port:** `5432`
+- **Database:** `somos_r_dev`
+- **Username:** `postgres`
+- **Password:** `postgres`
 
 ---
 
@@ -156,7 +150,9 @@ backend/
 │   └── versions/                # Archivos de migración generados
 ├── scripts/
 │   └── init-db.sql              # Script de inicialización (extensiones PostGIS)
-├── docker-compose.yml
+├── Dockerfile                   # Imagen de la app (construida por docker compose)
+├── docker-compose.yml           # Orquestación de todos los servicios locales
+├── .dockerignore                # Archivos excluidos del build de Docker
 ├── pyproject.toml
 └── .env.local                   # Variables de entorno locales (NO commitear)
 ```
@@ -165,51 +161,74 @@ backend/
 
 ## Comandos frecuentes
 
-### Base de datos
+### Contenedores
 
 ```bash
-# Levantar DB
+# Levantar todo (primera vez, con build)
+docker compose up --build -d
+
+# Levantar todo (sin rebuild)
 docker compose up -d
 
-# Detener DB (conserva los datos)
+# Detener todo (conserva los datos)
 docker compose stop
 
-# Detener DB y eliminar volúmenes (resetea todo)
+# Detener y eliminar contenedores y volúmenes (resetea la DB)
 docker compose down -v
 
-# Ver logs del container
+# Ver logs de la app en tiempo real
+docker compose logs -f app
+
+# Ver logs de la DB
 docker compose logs postgres
+
+# Abrir una shell dentro del contenedor de la app
+docker compose exec app bash
 ```
 
-### Migraciones
+### Migraciones (dentro del contenedor)
 
 ```bash
-# Crear una nueva migración (autogenera desde los modelos)
-poetry run alembic revision --autogenerate -m "descripción del cambio"
-
 # Aplicar migraciones pendientes
-poetry run alembic upgrade head
+docker compose exec app poetry run alembic upgrade head
+
+# Crear una nueva migración (autogenera desde los modelos)
+docker compose exec app poetry run alembic revision --autogenerate -m "descripción del cambio"
+
+# Ver estado actual
+docker compose exec app poetry run alembic current
+
+# Ver historial
+docker compose exec app poetry run alembic history
 
 # Revertir la última migración
-poetry run alembic downgrade -1
+docker compose exec app poetry run alembic downgrade -1
 
 # Revertir todas las migraciones
-poetry run alembic downgrade base
+docker compose exec app poetry run alembic downgrade base
 ```
 
-> **Nota:** Al crear una migración que incluya columnas de geometría (`GeoAlchemy2`), asegúrate de que el archivo generado tenga `import geoalchemy2` en los imports. El template ya está configurado para incluirlo automáticamente.
+> **Nota:** Al crear una migración que incluya columnas de geometría (`GeoAlchemy2`), verifica que el archivo generado tenga `import geoalchemy2` en los imports. El template ya está configurado para incluirlo automáticamente.
 
-### Tests
+### Tests (dentro del contenedor)
 
 ```bash
 # Ejecutar todos los tests
-poetry run pytest
+docker compose exec app poetry run pytest
 
 # Con output detallado
-poetry run pytest -v
+docker compose exec app poetry run pytest -v
 
 # Un archivo específico
-poetry run pytest tests/test_users.py
+docker compose exec app poetry run pytest tests/test_users.py
+```
+
+### Rebuild de la imagen
+
+Solo es necesario cuando cambias dependencias en `pyproject.toml`:
+
+```bash
+docker compose up --build -d
 ```
 
 ---

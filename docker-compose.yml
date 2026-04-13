@@ -16,6 +16,44 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - somos-r-network
+
+# pgAdmin (Opcional - Interfaz gráfica para ver la DB)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: somos-r-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@somosr.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - somos-r-network
+  
+  # Nuestro servicio (Backend)
+  app:
+    build: .  # Indica que use el Dockerfile, es decir se define la ruta
+    container_name: somos-r-backend
+    volumes:
+      - .:/app  # Sincroniza tu código para ver cambios en tiempo real
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/somos_r_dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - somos-r-network
+    # AQUÍ es donde usas poetry para arrancar el servidor uvicorn
+    command: poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 volumes:
   postgres_data:
+
+networks:
+  somos-r-network:
+    driver: bridge
