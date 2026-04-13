@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
+from app.domains.auth.docs import LOGIN_DOCS, REGISTER_DOCS
 from app.domains.auth.schemas import (
     LoginRequest,
     RegisterRequest,
@@ -15,7 +16,7 @@ from app.domains.users.models import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
     data = request.model_dump()
     plain_password = data.pop("password")
@@ -37,7 +38,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse, **LOGIN_DOCS)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == request.email).first()
 
