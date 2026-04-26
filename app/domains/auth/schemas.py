@@ -4,8 +4,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domains.users.enums import UserType
-
 
 # ---------------------------------------------------------------------------
 # Shared base — fields required for every actor
@@ -16,7 +14,7 @@ class _RegisterBase(BaseModel):
     password: str
     full_name: str
     phone: str | None = None
-    id_type: str   # code from document_types table, e.g. "CC", "CE", "NIT"
+    id_type: str
     id_number: str
 
 
@@ -28,7 +26,7 @@ class CitizenRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "citizen",
+                "user_type_code": "citizen",
                 "email": "juan.perez@email.com",
                 "password": "segura123",
                 "full_name": "Juan Pérez",
@@ -41,17 +39,17 @@ class CitizenRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.citizen] = UserType.citizen
+    user_type_code: Literal["citizen"] = "citizen"
     address: str | None = None
     latitude: float | None = None
     longitude: float | None = None
 
 
-class BuildingAdminRegister(_RegisterBase):
+class BuildingRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "building_admin",
+                "user_type_code": "building",
                 "email": "admin@conjuntolaspalmas.com",
                 "password": "segura123",
                 "full_name": "María Torres",
@@ -64,7 +62,7 @@ class BuildingAdminRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.building_admin] = UserType.building_admin
+    user_type_code: Literal["building"] = "building"
     building_name: str
     num_units: int
     representation_document: str | None = None
@@ -74,7 +72,7 @@ class RecyclerRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "recycler",
+                "user_type_code": "recycler",
                 "email": "carlos.recicla@email.com",
                 "password": "segura123",
                 "full_name": "Carlos Mendoza",
@@ -85,15 +83,15 @@ class RecyclerRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.recycler] = UserType.recycler
+    user_type_code: Literal["recycler"] = "recycler"
     association_id: uuid.UUID | None = None
 
 
-class EcaOperatorRegister(_RegisterBase):
+class EcaRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "eca_operator",
+                "user_type_code": "eca",
                 "email": "operador@ecabogota.com",
                 "password": "segura123",
                 "full_name": "Luisa Ramírez",
@@ -105,16 +103,16 @@ class EcaOperatorRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.eca_operator] = UserType.eca_operator
+    user_type_code: Literal["eca"] = "eca"
     employee_code: str | None = None
     association_id: uuid.UUID | None = None
 
 
-class AsobeumAdminRegister(_RegisterBase):
+class AssociationRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "asobeum_admin",
+                "user_type_code": "association",
                 "email": "admin@asobeum.org",
                 "password": "segura123",
                 "full_name": "Roberto Gómez",
@@ -126,7 +124,7 @@ class AsobeumAdminRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.asobeum_admin] = UserType.asobeum_admin
+    user_type_code: Literal["association"] = "association"
     association_nit: str
     legal_representative: str
 
@@ -135,7 +133,7 @@ class B2bClientRegister(_RegisterBase):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
-                "user_type": "b2b_client",
+                "user_type_code": "b2b_client",
                 "email": "compras@industriasverdes.com",
                 "password": "segura123",
                 "full_name": "Andrés Castillo",
@@ -148,21 +146,21 @@ class B2bClientRegister(_RegisterBase):
             }]
         }
     )
-    user_type: Literal[UserType.b2b_client] = UserType.b2b_client
+    user_type_code: Literal["b2b_client"] = "b2b_client"
     company_name: str
     tax_id: str
     commercial_contact: str | None = None
 
 
-# Discriminated union — Pydantic selects the right schema based on user_type
+# Discriminated union — Pydantic selects the right schema based on user_type_code
 RegisterRequest = Annotated[
     CitizenRegister
-    | BuildingAdminRegister
+    | BuildingRegister
     | RecyclerRegister
-    | EcaOperatorRegister
-    | AsobeumAdminRegister
+    | EcaRegister
+    | AssociationRegister
     | B2bClientRegister,
-    Field(discriminator="user_type"),
+    Field(discriminator="user_type_code"),
 ]
 
 
@@ -197,7 +195,8 @@ class UserResponse(BaseModel):
     phone: str | None
     id_type: str
     id_number: str
-    user_type: UserType
+    user_type_code: str
+    role_code: str | None
     created_at: datetime
 
 

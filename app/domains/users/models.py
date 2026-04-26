@@ -16,7 +16,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.domains.users.enums import UserType, VerificationStatus
+from app.domains.users.enums import VerificationStatus
 
 
 class User(Base):
@@ -32,7 +32,8 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     id_type: Mapped[str] = mapped_column(String(10), ForeignKey("document_types.code"), nullable=False)
     id_number: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
-    user_type: Mapped[UserType] = mapped_column(Enum(UserType), nullable=False)
+    user_type_code: Mapped[str] = mapped_column(String(20), ForeignKey("user_types.code"), nullable=False)
+    role_code: Mapped[str | None] = mapped_column(String(20), ForeignKey("roles.code"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -43,12 +44,12 @@ class User(Base):
         nullable=False,
     )
 
-    # --- citizen / building_admin ---
+    # --- citizen / building ---
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    # --- building_admin ---
+    # --- building ---
     building_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     num_units: Mapped[int | None] = mapped_column(nullable=True)
     representation_document: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -66,11 +67,11 @@ class User(Base):
     )
     verifier: Mapped["User | None"] = relationship("User", remote_side="User.id", foreign_keys=[verified_by])
 
-    # --- eca_operator ---
+    # --- eca ---
     employee_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
     permissions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # --- asobeum_admin ---
+    # --- association ---
     association_nit: Mapped[str | None] = mapped_column(String(50), nullable=True)
     legal_representative: Mapped[str | None] = mapped_column(String(255), nullable=True)
     coverage_area: Mapped[object | None] = mapped_column(
@@ -83,5 +84,5 @@ class User(Base):
     commercial_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rep_goals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
-    # --- recycler / eca_operator / asobeum_admin ---
+    # --- recycler / eca / association ---
     association_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
