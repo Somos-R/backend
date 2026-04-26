@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from app.domains.auth.router import router as auth_router
 from app.domains.catalogs.router import router as catalogs_router
+from app.domains.users.router import router as users_router
 
 app = FastAPI(
     title="Somos R API",
@@ -11,6 +12,7 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(catalogs_router)
+app.include_router(users_router)
 
 
 @app.get("/health")

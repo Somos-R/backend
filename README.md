@@ -135,26 +135,42 @@ Para conectarte a la base de datos desde pgAdmin, crea un servidor con:
 ```
 backend/
 ├── app/
-│   ├── main.py                  # Punto de entrada FastAPI
+│   ├── main.py                      # Punto de entrada FastAPI — registra todos los routers
 │   ├── core/
-│   │   ├── config.py            # Variables de entorno (pydantic-settings)
-│   │   └── database.py          # Engine, SessionLocal, Base, get_db
+│   │   ├── config.py                # Variables de entorno (pydantic-settings)
+│   │   ├── database.py              # Engine, SessionLocal, Base, get_db
+│   │   └── security.py             # hash_password, verify_password, create_access_token, get_current_user
 │   └── domains/
+│       ├── auth/
+│       │   ├── docs.py              # Metadata Swagger: REGISTER_DOCS, LOGIN_DOCS
+│       │   ├── router.py            # POST /auth/register · POST /auth/login
+│       │   └── schemas.py          # RegisterRequest (discriminated union) · LoginRequest · TokenResponse · UserResponse
+│       ├── catalogs/
+│       │   ├── docs.py              # Metadata Swagger: DOCUMENT_TYPES_DOCS
+│       │   ├── models.py            # DocumentType · UserType · Role (tablas de lookup)
+│       │   └── router.py            # GET /catalogs/document-types
 │       └── users/
-│           ├── enums.py         # UserType, VerificationStatus
-│           ├── models.py        # Modelo SQLAlchemy: tabla users
-│           └── schemas.py       # Schemas Pydantic por actor
+│           ├── docs.py              # Metadata Swagger: LIST_USERS_DOCS · GET_USER_DOCS · UPDATE_USER_DOCS
+│           ├── enums.py             # VerificationStatus
+│           ├── models.py            # User (tabla principal)
+│           ├── router.py            # GET /users · GET /users/{id} · PATCH /users/{id}
+│           └── schemas.py          # UpdateUserRequest · UserDetailResponse · UserListResponse
 ├── migrations/
-│   ├── env.py                   # Configuración Alembic
-│   ├── script.py.mako           # Template para nuevas migraciones
-│   └── versions/                # Archivos de migración generados
+│   ├── env.py                       # Configuración Alembic
+│   ├── script.py.mako               # Template para nuevas migraciones
+│   └── versions/
+│       └── 0001_initial_schema.py   # Tablas + seeds: document_types, user_types, roles, users
 ├── scripts/
-│   └── init-db.sql              # Script de inicialización (extensiones PostGIS)
-├── Dockerfile                   # Imagen de la app (construida por docker compose)
-├── docker-compose.yml           # Orquestación de todos los servicios locales
-├── .dockerignore                # Archivos excluidos del build de Docker
+│   ├── impact_check.py              # Hook PostToolUse: detecta cambios en archivos clave
+│   └── init-db.sql                  # Script de inicialización (extensiones PostGIS)
+├── .claude/
+│   └── settings.json                # Configuración de hooks para Claude Code
+├── CLAUDE.md                        # Instrucciones de proyecto para Claude
+├── Dockerfile                       # Imagen de la app (construida por docker compose)
+├── docker-compose.yml               # Orquestación de todos los servicios locales
+├── .dockerignore                    # Archivos excluidos del build de Docker
 ├── pyproject.toml
-└── .env.local                   # Variables de entorno locales (NO commitear)
+└── .env.local                       # Variables de entorno locales (NO commitear)
 ```
 
 ---
@@ -246,16 +262,53 @@ docker compose up --build -d
 
 ---
 
+## Endpoints disponibles
+
+Todos los endpoints protegidos requieren header `Authorization: Bearer <token>`.
+
+### Auth — `/auth`
+
+| Método | Ruta | Descripción | Auth |
+|--------|------|-------------|------|
+| `POST` | `/auth/register` | Registrar nuevo usuario (discriminado por `user_type_code`) | No |
+| `POST` | `/auth/login` | Iniciar sesión · retorna JWT Bearer token | No |
+
+### Usuarios — `/users`
+
+| Método | Ruta | Descripción | Auth |
+|--------|------|-------------|------|
+| `GET` | `/users` | Listar usuarios con paginación y filtros | Sí |
+| `GET` | `/users/{user_id}` | Obtener perfil completo de un usuario | Sí |
+| `PATCH` | `/users/{user_id}` | Actualizar campos del perfil (PATCH semántico) | Sí |
+
+Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verification_status`, `limit`, `offset`.
+
+### Catálogos — `/catalogs`
+
+| Método | Ruta | Descripción | Auth |
+|--------|------|-------------|------|
+| `GET` | `/catalogs/document-types` | Listar tipos de documento válidos para `id_type` | No |
+
+---
+
 ## Actores del sistema
 
-| Actor | Plataforma | `user_type` |
-|-------|-----------|------------|
+| Actor | Plataforma | `user_type_code` |
+|-------|-----------|-----------------|
 | Ciudadano | Mobile | `citizen` |
-| Admin Conjunto | Mobile / Web | `building_admin` |
+| Administrador de Conjunto | Mobile / Web | `building` |
 | Reciclador | Mobile | `recycler` |
-| Operador ECA | Web | `eca_operator` |
-| Admin ASOBEUM | Web | `asobeum_admin` |
+| Operador ECA | Web | `eca` |
+| Administrador ASOBEUM | Web | `association` |
 | Cliente B2B | Web | `b2b_client` |
+
+### Roles disponibles
+
+| `role_code` | Descripción |
+|-------------|-------------|
+| `eca_admin` | Administrador ECA |
+| `eca_operator` | Operador ECA |
+| `association_admin` | Administrador de Asociación |
 
 ---
 
