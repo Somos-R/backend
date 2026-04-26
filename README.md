@@ -299,7 +299,7 @@ Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verificatio
 | Administrador de Conjunto | Mobile / Web | `building` |
 | Reciclador | Mobile | `recycler` |
 | Operador ECA | Web | `eca` |
-| Administrador ASOBEUM | Web | `association` |
+| Administrador | Web | `association` |
 | Cliente B2B | Web | `b2b_client` |
 
 ### Roles disponibles
