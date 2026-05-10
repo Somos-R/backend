@@ -1,7 +1,9 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
+
+from app.domains.users.enums import VerificationStatus
 
 
 class UpdateUserRequest(BaseModel):
@@ -94,7 +96,7 @@ class UserDetailResponse(BaseModel):
     # recycler
     profile_picture: str | None
     id_picture: str | None
-    verification_status: str | None
+    verification_status: VerificationStatus | None
 
     # eca
     employee_code: str | None
@@ -112,3 +114,23 @@ class UserDetailResponse(BaseModel):
 
     # recycler / eca / association
     association_id: uuid.UUID | None
+
+
+class UpdateRecyclerStatusRequest(BaseModel):
+    status: VerificationStatus
+    rejection_reason: str | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"status": "verified"},
+                {"status": "rejected", "rejection_reason": "Documentación de identidad incompleta"},
+            ]
+        }
+    )
+
+    @model_validator(mode="after")
+    def require_reason_when_rejected(self):
+        if self.status == VerificationStatus.rejected and not self.rejection_reason:
+            raise ValueError("rejection_reason es requerido cuando el estado es rechazado (2)")
+        return self

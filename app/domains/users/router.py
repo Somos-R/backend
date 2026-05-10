@@ -1,14 +1,16 @@
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.domains.users.docs import GET_USER_DOCS, LIST_USERS_DOCS, UPDATE_USER_DOCS
+from app.core.security import get_current_user, hash_password
+from app.domains.users.docs import GET_USER_DOCS, LIST_USERS_DOCS, UPDATE_RECYCLER_STATUS_DOCS, UPDATE_USER_DOCS
+from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
-from app.domains.users.schemas import UpdateUserRequest, UserDetailResponse, UserListResponse
+from app.domains.users.schemas import UpdateRecyclerStatusRequest, UpdateUserRequest, UserDetailResponse, UserListResponse
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -47,6 +49,34 @@ def get_user(
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+    return user
+
+
+@router.patch("/{user_id}/verification-status", response_model=UserDetailResponse, **UPDATE_RECYCLER_STATUS_DOCS)
+def update_recycler_status(
+    user_id: uuid.UUID,
+    request: UpdateRecyclerStatusRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+    if user.user_type_code != "recycler":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este endpoint solo aplica para recicladores")
+
+    user.verification_status = request.status
+
+    if request.status == VerificationStatus.verified:
+        user.password_hash = hash_password(user.id_number)
+        user.verified_at = datetime.now(timezone.utc)
+        user.verified_by = current_user.id
+        user.rejection_reason = None
+    elif request.status == VerificationStatus.rejected:
+        user.rejection_reason = request.rejection_reason
+
+    db.commit()
+    db.refresh(user)
     return user
 
 

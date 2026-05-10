@@ -18,15 +18,18 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
 
 def create_access_token(data: dict) -> str:
     payload = data.copy()
-    expire = datetime.now(timezone.utc) + timedelta(
+    payload["jti"] = str(uuid.uuid4())
+    payload["exp"] = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
-    payload["exp"] = expire
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -46,10 +49,19 @@ def get_current_user(
             algorithms=[settings.algorithm],
         )
         user_id: str | None = payload.get("sub")
-        if user_id is None:
+        jti: str | None = payload.get("jti")
+        if user_id is None or jti is None:
             raise invalid
     except JWTError:
         raise invalid
+
+    from app.domains.auth.models import RevokedToken
+    if db.get(RevokedToken, jti) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="La sesión ha sido cerrada",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     from app.domains.users.models import User
     user = db.get(User, uuid.UUID(user_id))
