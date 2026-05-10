@@ -69,22 +69,21 @@ class BuildingRegister(_RegisterBase):
 
 
 class RecyclerRegister(_RegisterBase):
+    """La asociación registra al reciclador sin contraseña; queda en estado pendiente (0)."""
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
                 "user_type_code": "recycler",
                 "email": "carlos.recicla@email.com",
-                "password": "segura123",
                 "full_name": "Carlos Mendoza",
                 "phone": "3156789012",
                 "id_type": "CC",
                 "id_number": "80234567",
-                "association_id": None,
             }]
         }
     )
     user_type_code: Literal["recycler"] = "recycler"
-    association_id: uuid.UUID | None = None
+    password: str | None = None  # no requerida; se asigna automáticamente al verificar
 
 
 class EcaRegister(_RegisterBase):
