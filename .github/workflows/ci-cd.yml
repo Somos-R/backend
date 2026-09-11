@@ -14,6 +14,10 @@ jobs:
   # ─── Tests ────────────────────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
+    env:
+      # Settings() requires these; no real DB is needed until tests hit one.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/somos_r_test
+      SECRET_KEY: ci-test-secret-key
     steps:
       - uses: actions/checkout@v4
 
@@ -22,10 +26,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install Poetry
-        run: pip install poetry==1.8.3
+        run: pip install "poetry>=2.0.0,<3.0.0"
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: poetry install --no-root --no-interaction
 
       - name: Run tests
         run: poetry run pytest --tb=short -q
