@@ -97,6 +97,8 @@ class UserDetailResponse(BaseModel):
     profile_picture: str | None
     id_picture: str | None
     verification_status: VerificationStatus | None
+    rejection_reason: str | None
+    verified_at: datetime | None
 
     # eca
     employee_code: str | None

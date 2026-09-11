@@ -206,3 +206,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Kubernetes — secret values (never commit real credentials)
+k8s/secret.yaml

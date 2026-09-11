@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Flujo de Git — leer primero
+
+`main` está protegida: solo avanza mediante un Pull Request mergeado, nunca con push directo.
+
+- **Nunca commitear directo en `main`.** Antes de empezar cualquier cambio — incluso uno pequeño — crear o cambiar a una rama (`feature/<slug>`, `fix/<slug>`, `chore/<slug>`).
+- **Commitear a medida que se avanza.** No dejar una sesión con cambios sin stagear o sin commitear "para después" — un working tree sin commitear no es un punto de guardado. Si el trabajo quedó a medias, commitearlo igual como WIP en la rama.
+- **Pushear y abrir un PR** en cuanto haya algo revisable, en vez de dejar trabajo terminado solo en local. Un PR en draft está bien si sigue en progreso.
+- Esto aplica igual si la sesión es de una persona o de Claude Code/un agente — sin excepciones por "es un cambio chico".
+
+Esto no es teórico: este repo tuvo ~4 meses de trabajo real (dominios de inventory/weighings/transactions) sin commitear en el working tree hasta que se consolidó en un PR. No repetirlo.
+
 ## Comandos de desarrollo
 
 ```bash
