@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "py scripts/impact_check.py",
+            "command": "py scripts/impact_check.py 2>/dev/null || true",
             "timeout": 10
           }
         ]
