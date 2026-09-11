@@ -39,7 +39,6 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -66,7 +65,9 @@ jobs:
         with:
           context: .
           file: Dockerfile.prod
-          push: true
+          # Only publish the image once it's actually on main — PRs just
+          # need the build itself to succeed, that's what's required to merge.
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
