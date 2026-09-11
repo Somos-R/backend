@@ -1,4 +1,4 @@
-name: Build and Deploy — Backend
+name: CI — Backend
 
 on:
   push:
@@ -33,9 +33,9 @@ jobs:
 
       - name: Run tests
         run: poetry run pytest --tb=short -q
-        continue-on-error: true   # No bloquear deploy si no hay tests aún
+        continue-on-error: true   # Don't fail the run until there are real tests to fail on
 
-  # ─── Build & Push image ───────────────────────────────────────────────────
+  # ─── Build image (smoke test — not pushed anywhere for deployment yet) ────
   build:
     needs: test
     runs-on: ubuntu-latest
@@ -72,38 +72,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ─── Deploy to Kubernetes ─────────────────────────────────────────────────
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: azure/setup-kubectl@v3
-
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-
-      - name: Apply K8s manifests
-        run: |
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/configmap.yaml
-          kubectl apply -f k8s/postgres/
-          kubectl apply -f k8s/backend/
-          kubectl apply -f k8s/frontend/
-          kubectl apply -f k8s/ingress.yaml
-
-      - name: Update backend image
-        run: |
-          kubectl set image deployment/somos-r-backend \
-            backend=${{ env.IMAGE }}:${{ needs.build.outputs.image_tag }} \
-            -n somos-r-prod
-          kubectl rollout status deployment/somos-r-backend \
-            -n somos-r-prod --timeout=120s
-
-      - name: Verify deployment
-        run: kubectl get pods -n somos-r-prod
+# Deployment is not wired up here yet. The plan is Railway (backend) + Vercel
+# (web) + Supabase (Postgres/PostGIS) — see ESTADO_Y_PLAN_MVP.md — connected
+# straight to GitHub, not a Kubernetes cluster. Add that as its own step once
+# the Railway project exists.
