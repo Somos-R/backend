@@ -20,7 +20,7 @@ def list_users(
     user_type_code: str | None = Query(default=None),
     role_code: str | None = Query(default=None),
     verification_status: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),

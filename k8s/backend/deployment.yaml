@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: somos-r-backend
+  namespace: somos-r-prod
+  labels:
+    app: somos-r-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: somos-r-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0        # Zero-downtime: no bajar pods antes de subir nuevos
+  template:
+    metadata:
+      labels:
+        app: somos-r-backend
+    spec:
+      initContainers:
+        # 1. Espera a que PostgreSQL esté listo antes de migrar
+        - name: wait-for-postgres
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - "until nc -z postgres-service 5432; do echo 'Esperando PostgreSQL...'; sleep 2; done; echo 'PostgreSQL listo'"
+
+        # 2. Ejecuta migraciones de Alembic (alembic está en .venv/bin via PATH)
+        - name: run-migrations
+          image: ghcr.io/somos-r/backend:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: somos-r-config
+            - secretRef:
+                name: somos-r-secret
+
+      containers:
+        - name: backend
+          image: ghcr.io/somos-r/backend:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: somos-r-config
+            - secretRef:
+                name: somos-r-secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

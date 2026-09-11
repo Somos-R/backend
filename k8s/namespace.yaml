@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: somos-r-prod
+  labels:
+    app: somos-r
+    env: production

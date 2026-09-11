@@ -1,36 +1,16 @@
-# Version control
 .git
 .gitignore
-
-# Python cache
+.env*
 __pycache__
 *.pyc
 *.pyo
-*.pyd
-.Python
-*.egg-info
-dist/
-build/
-
-# Environment & secrets
-.env.local
-.env.*.local
-*.env
-
-# Dev tools
-.vscode/
-.idea/
-*.code-workspace
-
-# Claude
-.claude/
-
-# Test artifacts
-.pytest_cache/
+.pytest_cache
 .coverage
 htmlcov/
-
-# Docker
-Dockerfile
+dist/
+*.egg-info
+.venv
+k8s/
+docs/
+README.md
 docker-compose.yml
-.dockerignore

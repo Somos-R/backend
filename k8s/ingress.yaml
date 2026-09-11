@@ -1,0 +1,34 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: somos-r-ingress
+  namespace: somos-r-prod
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - somosr.com
+      secretName: somos-r-tls
+  rules:
+    - host: somosr.com
+      http:
+        paths:
+          # /api/* → backend (strip /api prefix via rewrite-target /$2)
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: backend-service
+                port:
+                  number: 8000
+          # /* → frontend
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 80
