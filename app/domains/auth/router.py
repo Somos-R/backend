@@ -23,6 +23,7 @@ from app.domains.auth.schemas import (
     TokenResponse,
     UserResponse,
 )
+from app.domains.catalogs.models import Role
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 
@@ -51,6 +52,15 @@ def logout(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
 def register(request: RegisterRequest, db: Session = Depends(get_db)):
     data = request.model_dump()
+
+    role_code = data.get("role_code")
+    if role_code is not None:
+        role = db.query(Role).filter(Role.code == role_code, Role.is_active == True).first()
+        if role is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"role_code '{role_code}' no es válido o está inactivo",
+            )
 
     if data.get("user_type_code") == "recycler":
         data.pop("password", None)

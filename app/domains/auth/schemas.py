@@ -99,12 +99,14 @@ class EcaRegister(_RegisterBase):
                 "id_number": "30567890",
                 "employee_code": "ECA-2024-015",
                 "association_id": None,
+                "role_code": "eca_operator",
             }]
         }
     )
     user_type_code: Literal["eca"] = "eca"
     employee_code: str | None = None
     association_id: uuid.UUID | None = None
+    role_code: str | None = None
 
 
 class AssociationRegister(_RegisterBase):
@@ -120,12 +122,14 @@ class AssociationRegister(_RegisterBase):
                 "id_number": "79345678",
                 "association_nit": "900123456-7",
                 "legal_representative": "Roberto Gómez Vargas",
+                "role_code": "association_admin",
             }]
         }
     )
     user_type_code: Literal["association"] = "association"
     association_nit: str
     legal_representative: str
+    role_code: str | None = None
 
 
 class B2bClientRegister(_RegisterBase):
