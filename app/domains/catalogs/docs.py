@@ -16,3 +16,21 @@ Usa el campo **`code`** como valor de `id_type` al llamar `POST /auth/register`.
 No requiere autenticación.
 """,
 }
+
+ROLES_DOCS = {
+    "summary": "Listar roles disponibles",
+    "description": """
+Retorna los roles activos que pueden asignarse a usuarios de tipo `eca` o `association`.
+
+Usa el campo **`code`** como valor de `role_code` al llamar `POST /auth/register`
+(actores `eca`/`association`) o `PATCH /users/{id}`.
+
+| code | Descripción |
+|------|-------------|
+| `eca_admin` | Administrador ECA |
+| `eca_operator` | Operador ECA |
+| `association_admin` | Administrador Asociación |
+
+No requiere autenticación.
+""",
+}
