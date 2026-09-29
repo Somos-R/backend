@@ -65,9 +65,22 @@ Notas de comportamiento:
 Somos R es un actor propio, separado de los clientes: tipo `platform`, rol `platform_admin` (las personas de Somos R, mismo acceso).
 
 - **Sin autoregistro.** `POST /auth/register` no admite el tipo `platform`, un administrador de ECA o asociación no puede asignar el rol (422) y `GET /catalogs/roles` no lo lista. La primera cuenta la crea un operador con `scripts/create_platform_admin.py`; las siguientes, otro `platform_admin` desde el backoffice.
-- **No entra por el login público.** `POST /auth/login` responde igual que ante una contraseña errónea, aunque las credenciales sean correctas (queda auditado con el motivo `platform_account`); las cuentas de Somos R entrarán por el backoffice, con segundo factor y audiencia de token propia. Tampoco se cuentan sus intentos fallidos (nadie puede bloquear a un administrador adivinando) ni se le ofrece recuperar la contraseña por un enlace público.
+- **No entra por el login público.** `POST /auth/login` responde igual que ante una contraseña errónea, aunque las credenciales sean correctas (queda auditado con el motivo `platform_account`); las cuentas de Somos R entran por el backoffice (ver «Backoffice»), con segundo factor y audiencia de token propia. Tampoco se cuentan sus intentos fallidos (nadie puede bloquear a un administrador adivinando) ni se le ofrece recuperar la contraseña por un enlace público.
 - **Cero acceso a la API de los clientes:** todos los endpoints de esta matriz responden 403 a un `platform_admin`.
 - **Permisos por capacidad, no por rol** (`PLATFORM_CAPABILITIES` en `app/core/permissions.py`, dependencia `require_capability`): `organizations.review`, `users.manage`, `catalogs.manage`, `audit.read`. Hoy las tiene todas `platform_admin`; si mañana se separan funciones, se reparten capacidades entre roles nuevos sin tocar los endpoints. Todavía no se anuncian en `GET /auth/me`: una capacidad solo se anuncia cuando un endpoint la exige.
+
+## Backoffice (`/admin`)
+
+Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la API de los clientes.
+
+- **Dos pasos, segundo factor obligatorio.** `POST /admin/auth/login` (contraseña) responde con un token de desafío de 5 minutos, sin acceso a nada. La sesión solo se abre con `POST /admin/auth/mfa/verify` (código TOTP de la app autenticadora o un código de recuperación). En el primer ingreso la cuenta **debe** configurar el segundo factor (`/admin/auth/mfa/enroll` y `/enroll/confirm`), que entrega 10 códigos de recuperación de un solo uso.
+- **Audiencia de token propia.** Los tokens llevan `aud`: `portal` (clientes) o `backoffice` (Somos R). Cada API acepta solo la suya, en ambos sentidos; los tokens de refresco también se renuevan solo en su audiencia.
+- **Sesiones más cortas:** acceso de 10 minutos y refresco de 12 horas (clientes: 30 minutos y 30 días).
+- **Límites estrictos** (5/min por IP en login y segundo factor) y **bloqueo por intentos fallidos**, contando también los fallos del segundo factor.
+- **Restricción de red opcional:** `ADMIN_ALLOWED_CIDRS` limita todo `/admin` a esas direcciones.
+- **Recuperación:** códigos de recuperación (regenerables con un código vigente), restablecimiento por la otra persona de Somos R (`POST /admin/users/{id}/mfa/reset`, capacidad `users.manage`; nadie el propio) o, como último recurso, `scripts/reset_platform_mfa.py`. Restablecer termina las sesiones de la cuenta.
+- **Todo queda auditado:** `admin.login`, `admin.login_failed`, `admin.logout`, `admin.mfa_enrolled`, `admin.mfa_failed`, `admin.recovery_code_used`, `admin.recovery_codes_regenerated`, `admin.mfa_reset`.
+- `GET /admin/me` devuelve el perfil, las capacidades del rol y el estado del segundo factor.
 
 ## Capacidades (`GET /auth/me`)
 

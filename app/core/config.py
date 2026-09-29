@@ -30,6 +30,16 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_days: int = 30
 
+    # --- Backoffice (Somos R's own accounts): shorter sessions, stricter limits ---
+    backoffice_access_token_minutes: int = 10
+    backoffice_refresh_token_hours: int = 12
+    mfa_challenge_minutes: int = 5  # time to type the second factor after the password
+    # Fernet key that encrypts the TOTP secrets. Required outside dev. Generate one with:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    mfa_encryption_key: str | None = None
+    # Comma-separated CIDRs allowed to reach /admin (e.g. "203.0.113.0/24,198.51.100.7/32"). Empty = any.
+    admin_allowed_cidrs: str = ""
+
     # --- Email ---
     # "console": log the message (development) · "memory": keep it in an outbox (tests)
     # "resend": send through Resend (needs email_api_key and a verified sender domain)
@@ -77,6 +87,8 @@ class Settings(BaseSettings):
     rate_limit_register: str = "10/minute"
     rate_limit_forgot_password: str = "5/minute"
     rate_limit_token_flows: str = "10/minute"  # activate, verify/reset, change password
+    rate_limit_admin_auth: str = "5/minute"  # backoffice login and second factor
+    rate_limit_admin: str = "60/minute"  # the rest of /admin
     # Account lockout: after this many consecutive failures the account is locked for
     # 1 minute, doubling with every further failure up to the cap.
     login_max_attempts: int = 5
@@ -101,6 +113,18 @@ class Settings(BaseSettings):
                 f"SECRET_KEY must be at least {MIN_SECRET_KEY_LENGTH} characters and not a placeholder "
                 f"when APP_ENV={self.app_env}. Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
             )
+        self.admin_networks  # fails at startup, not on the first request, if a CIDR is malformed
+        if self.mfa_encryption_key:
+            try:
+                from cryptography.fernet import Fernet
+                Fernet(self.mfa_encryption_key.encode())
+            except Exception:
+                raise ValueError("MFA_ENCRYPTION_KEY is not a valid Fernet key")
+        elif self.app_env != "dev":
+            raise ValueError(
+                "MFA_ENCRYPTION_KEY is required when APP_ENV=staging|prod (it encrypts the TOTP secrets). "
+                "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            )
         if weak:
             logger.warning(
                 "SECRET_KEY is weak (short or a placeholder). Fine for local development; "
@@ -119,6 +143,11 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()] or ["*"]
+
+    @property
+    def admin_networks(self) -> list:
+        import ipaddress
+        return [ipaddress.ip_network(c.strip(), strict=False) for c in self.admin_allowed_cidrs.split(",") if c.strip()]
 
     @property
     def docs_enabled(self) -> bool:
@@ -141,6 +170,8 @@ class Settings(BaseSettings):
             found.append("SENTRY_DSN is empty: unhandled errors are only in the logs, nobody is alerted")
         if self.metrics_token and len(self.metrics_token) < 16:
             found.append("METRICS_TOKEN is shorter than 16 characters")
+        if not self.admin_networks:
+            found.append("ADMIN_ALLOWED_CIDRS is empty: /admin is reachable from any address")
         if self.frontend_url.startswith("http://localhost"):
             found.append("FRONTEND_URL points to localhost: links in emails will not work")
         return found

@@ -34,6 +34,8 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production-use-0123456789"
 os.environ["EMAIL_BACKEND"] = "memory"
 os.environ["RATE_LIMIT_ENABLED"] = "false"
+# A valid Fernet key (32 bytes, url-safe base64) so settings built for staging/prod are complete.
+os.environ["MFA_ENCRYPTION_KEY"] = "dGVzdC1tZmEta2V5LW5vdC1mb3ItcHJvZHVjdGlvbiE="
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

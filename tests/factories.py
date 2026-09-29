@@ -55,6 +55,15 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
     return user
 
 
+def backoffice_headers(user: User) -> dict[str, str]:
+    """Headers of a signed-in Somos R account (a backoffice token, as issued after the second factor)."""
+    token = create_access_token(
+        {"sub": str(user.id), "user_type": user.user_type_code, "role": user.role_code, "tv": user.token_version},
+        audience="backoffice",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 def auth_headers(user: User) -> dict[str, str]:
     token = create_access_token(
         {"sub": str(user.id), "user_type": user.user_type_code, "role": user.role_code}

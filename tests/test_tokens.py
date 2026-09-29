@@ -39,7 +39,8 @@ def _forge(claims, key=None, algorithm="HS256"):
 
 def _claims(user, **overrides):
     now = datetime.now(timezone.utc)
-    claims = {"sub": str(user.id), "jti": str(uuid.uuid4()), "iat": now, "exp": now + timedelta(minutes=5)}
+    claims = {"sub": str(user.id), "jti": str(uuid.uuid4()), "iat": now, "exp": now + timedelta(minutes=5),
+              "aud": "portal"}
     claims.update(overrides)
     return {k: v for k, v in claims.items() if v is not None}
 
@@ -51,7 +52,7 @@ class TestAccessTokenValidation:
         user = factories.make_user(db, "citizen")
         assert _me(client, user, _forge(_claims(user))).status_code == 200
 
-    @pytest.mark.parametrize("missing", ["exp", "iat", "sub", "jti"])
+    @pytest.mark.parametrize("missing", ["exp", "iat", "sub", "jti", "aud"])
     def test_tokens_missing_a_required_claim_are_rejected(self, client, db, missing):
         user = factories.make_user(db, "citizen")
         token = _forge(_claims(user, **{missing: None}))
@@ -192,7 +193,7 @@ class TestRefreshTokens:
         db.commit()
 
         access = client.post("/auth/refresh", json={"refresh_token": token}).json()["access_token"]
-        claims = jwt.decode(access, settings.secret_key, algorithms=["HS256"])
+        claims = jwt.decode(access, settings.secret_key, algorithms=["HS256"], audience="portal")
         assert claims["role"] == "eca_warehouse"
 
 
