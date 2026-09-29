@@ -309,6 +309,10 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
     # Staff created by an organization's admin belong to that organization. The client never says which:
     # it is not part of the request, so it cannot be chosen (or forged) from outside.
     if actor is not None and has_role(actor, ORG_ADMINS) and data["user_type_code"] == actor.user_type_code:
+        if actor.organization_id is None:
+            raise ApiError(
+                "no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tu cuenta no está asociada a una organización, así que no puede crear personal")
         data["organization_id"] = actor.organization_id
 
     if data.get("user_type_code") == "recycler":

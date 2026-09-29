@@ -139,8 +139,9 @@ class TestVisibleAsReadOnly:
         assert client_as(admin).get("/auth/me").json()["organization_id"] == str(org.id)
         assert client_as(admin).get(f"/users/{admin.id}").json()["organization_id"] == str(org.id)
 
-    def test_users_without_one_show_null(self, client_as, eca_admin):
-        assert client_as(eca_admin).get("/auth/me").json()["organization_id"] is None
+    def test_users_without_one_show_null(self, client_as, db):
+        recycler = factories.make_user(db, "recycler")
+        assert client_as(recycler).get("/auth/me").json()["organization_id"] is None
 
     def test_the_list_carries_it_too(self, client_as, db):
         org = factories.make_organization(db, "eca")

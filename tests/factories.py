@@ -46,6 +46,10 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
         data["tax_id"] = f"9{n:08d}-1"
     if user_type == "recycler":
         data["verification_status"] = VerificationStatus.verified
+    if user_type in ("eca", "association") and "organization_id" not in overrides:
+        # Staff belong to an organization. Tests that do not care share one per type (a test that wants
+        # two organizations, or none, says so explicitly).
+        data["organization_id"] = default_organization(db, user_type).id
     data.update(overrides)
 
     user = User(**data)
@@ -53,6 +57,14 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
     db.commit()
     db.refresh(user)
     return user
+
+
+def default_organization(db: Session, org_type: str):
+    """The organization staff created by the factory share unless told otherwise (one per type per test)."""
+    cache = db.info.setdefault("default_organizations", {})
+    if org_type not in cache:
+        cache[org_type] = make_organization(db, org_type, legal_name=f"Organización por defecto ({org_type})")
+    return cache[org_type]
 
 
 def make_organization(db: Session, org_type: str = "association", **overrides):

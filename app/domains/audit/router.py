@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import String, and_, cast, false, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -30,9 +30,19 @@ def list_audit_log(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*AUDIT_READ)),
+    actor: User = Depends(require_roles(*AUDIT_READ)),
 ):
-    query = select(AuditLog)
+    # An organization reads the trail of its own people only, never another organization's: what they
+    # did, and what was attempted against their accounts (a failed login has no actor, only a target).
+    if actor.organization_id is None:
+        query = select(AuditLog).where(false())
+    else:
+        own = select(User.id).where(User.organization_id == actor.organization_id)
+        own_as_text = select(cast(User.id, String)).where(User.organization_id == actor.organization_id)
+        query = select(AuditLog).where(or_(
+            AuditLog.actor_id.in_(own),
+            and_(AuditLog.target_type == "user", AuditLog.target_id.in_(own_as_text)),
+        ))
     if action:
         query = query.where(AuditLog.action == action)
     if outcome:
