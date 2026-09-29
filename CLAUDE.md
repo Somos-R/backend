@@ -45,6 +45,15 @@ docker compose exec app poetry run pytest --cov
 
 **Tests:** `tests/conftest.py` recrea una base `<nombre>_test` (nunca toca la de desarrollo) y la migra con Alembic en cada sesión; cada test corre en una transacción con rollback. Necesita Postgres/PostGIS arriba (`docker compose up -d postgres`). `tests/test_known_issues.py` contiene brechas de seguridad conocidas como `xfail(strict=True)`: al corregir una, su test pasa, falla por ser estricto, y hay que quitar la marca. `tests/test_concurrency.py` es la excepción al aislamiento por rollback: confirma datos reales para que varios hilos compitan, y limpia las tablas al terminar.
 
+**Seguridad en el CI** (`.github/workflows/security.yml`, en cada PR, en `main` y cada lunes): `pip-audit` (vulnerabilidades en dependencias), `gitleaks` (secretos en todo el historial) y Trivy (imagen de producción, HIGH/CRITICAL con arreglo disponible). Para correrlos en local:
+
+```bash
+docker compose exec app poetry run pip-audit
+docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 detect --source /repo --redact --no-banner
+```
+
+Si `pip-audit` falla, actualizar la dependencia (`poetry update <paquete>`); si Trivy falla por el sistema base, subir la versión de la imagen en `Dockerfile.prod`. Un falso positivo de `gitleaks` se acepta por huella exacta en `.gitleaksignore` (o con `# gitleaks:allow` en la línea), nunca desactivando la regla. Dependabot abre los PR de actualización cada lunes.
+
 URLs locales: API `http://localhost:8000` · Swagger `http://localhost:8000/docs` · ReDoc `http://localhost:8000/redoc` · pgAdmin `http://localhost:5050` (solo con `--profile tools`). Los puertos quedan publicados únicamente en `127.0.0.1`; las credenciales de desarrollo se pueden cambiar en un `.env` (ver `.env.example`). Producción: `docs/despliegue.md`.
 
 ## Arquitectura

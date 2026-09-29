@@ -1,0 +1,4 @@
+# Accepted false positives: a fake password used in tests next to the word "token".
+# Format: <commit>:<file>:<rule>:<line>
+67cb3567f55bc98d38b3cfa915f9f244aafa799c:tests/test_account_flows.py:generic-api-key:93
+67cb3567f55bc98d38b3cfa915f9f244aafa799c:tests/test_account_flows.py:generic-api-key:160
