@@ -6,7 +6,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user, hash_password
+from app.core.permissions import (
+    ORG_ADMINS,
+    PRIVILEGED_USER_FIELDS,
+    USERS_DIRECTORY,
+    VERIFY_RECYCLERS,
+    ensure_can_assign_role,
+    forbidden,
+    has_role,
+    manageable_user_types,
+    visible_user_types,
+)
+from app.core.security import get_current_user, hash_password, require_roles
 from app.domains.users.docs import (
     GET_USER_DOCS,
     LIST_USERS_DOCS,
@@ -33,9 +44,13 @@ def list_users(
     limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    actor: User = Depends(require_roles(*USERS_DIRECTORY)),
 ):
-    query = db.query(User)
+    visible = visible_user_types(actor)
+    if user_type_code and user_type_code not in visible:
+        raise forbidden("No puedes consultar usuarios de ese tipo")
+
+    query = db.query(User).filter(User.user_type_code.in_(visible))
 
     if user_type_code:
         query = query.filter(User.user_type_code == user_type_code)
@@ -54,11 +69,17 @@ def list_users(
 def get_user(
     user_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    actor: User = Depends(get_current_user),
 ):
+    is_self = actor.id == user_id
+    if not is_self and not has_role(actor, USERS_DIRECTORY):
+        raise forbidden()
+
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+    if not is_self and user.user_type_code not in visible_user_types(actor):
+        raise forbidden("No puedes consultar usuarios de ese tipo")
     return user
 
 
@@ -67,7 +88,7 @@ def update_recycler_status(
     user_id: uuid.UUID,
     request: UpdateRecyclerStatusRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_roles(*VERIFY_RECYCLERS)),
 ):
     user = db.get(User, user_id)
     if user is None:
@@ -95,11 +116,28 @@ def update_user(
     user_id: uuid.UUID,
     request: UpdateUserRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    actor: User = Depends(get_current_user),
 ):
+    is_self = actor.id == user_id
+    is_org_admin = has_role(actor, ORG_ADMINS)
+    if not is_self and not is_org_admin:
+        raise forbidden()
+
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+
+    if not is_self and user.user_type_code not in manageable_user_types(actor):
+        raise forbidden("No puedes editar usuarios de ese tipo")
+
+    privileged = request.model_fields_set & PRIVILEGED_USER_FIELDS
+    if privileged:
+        if not is_org_admin:
+            raise forbidden("Solo un administrador puede modificar roles y permisos")
+        if is_self:
+            raise forbidden("No puedes modificar tus propios roles ni permisos")
+        if request.role_code is not None:
+            ensure_can_assign_role(actor, request.role_code, user.user_type_code)
 
     for field in request.model_fields_set:
         setattr(user, field, getattr(request, field))

@@ -17,8 +17,10 @@ El campo **`user_type_code`** determina qué schema se aplica y qué campos adic
 - `association` → `association_nit`, `legal_representative`
 - `b2b_client` → `company_name`, `tax_id`
 
-**Asignación de rol al crear (`eca` y `association`):** ambos aceptan `role_code` opcional
-para asignar el rol en el mismo request, sin necesidad de un `PATCH /users/{id}` posterior.
+**Asignación de rol al crear (`eca` y `association`):** ambos aceptan `role_code` opcional,
+pero **solo si la petición viene autenticada como administrador** (`eca_admin` o `association_admin`)
+y el rol es de su propia organización. Un registro anónimo con `role_code` responde 403; sin
+`role_code` el usuario queda sin rol (y sin permisos) hasta que un administrador se lo asigne.
 El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `422`.
 
 **Registro de reciclador (lo hace la asociación):** no requiere `password`. El reciclador queda
@@ -36,7 +38,7 @@ Consulta los valores válidos de `id_type` en `GET /catalogs/document-types`.
             },
         },
         422: {
-            "description": "Campos requeridos faltantes, `user_type` inválido, o `role_code` inexistente/inactivo",
+            "description": "Campos requeridos faltantes, `user_type` inválido, o `role_code` inexistente/inactivo o que no corresponde al tipo de usuario",
             "content": {
                 "application/json": {
                     "example": {

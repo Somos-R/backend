@@ -7,18 +7,18 @@ MISSING_ID = "00000000-0000-0000-0000-000000000000"
 
 
 class TestListUsers:
-    def test_lists_with_pagination_metadata(self, client_as, eca_admin, db):
+    def test_lists_with_pagination_metadata(self, client_as, association_admin, db):
         factories.make_user(db, "citizen")
-        r = client_as(eca_admin).get("/users?limit=1&offset=0")
+        r = client_as(association_admin).get("/users?limit=1&offset=0")
         assert r.status_code == 200
         body = r.json()
         assert body["limit"] == 1 and body["offset"] == 0
         assert body["total"] >= 2
         assert len(body["items"]) == 1
 
-    def test_filter_by_user_type(self, client_as, eca_admin, db):
+    def test_filter_by_user_type(self, client_as, association_admin, db):
         factories.make_user(db, "citizen")
-        r = client_as(eca_admin).get("/users?user_type_code=citizen")
+        r = client_as(association_admin).get("/users?user_type_code=citizen")
         assert r.status_code == 200
         assert r.json()["items"]
         assert all(u["user_type_code"] == "citizen" for u in r.json()["items"])
@@ -28,8 +28,8 @@ class TestListUsers:
 
 
 class TestGetUser:
-    def test_found(self, client_as, eca_admin, citizen):
-        r = client_as(eca_admin).get(f"/users/{citizen.id}")
+    def test_found(self, client_as, association_admin, citizen):
+        r = client_as(association_admin).get(f"/users/{citizen.id}")
         assert r.status_code == 200
         assert r.json()["email"] == citizen.email
 
@@ -51,10 +51,10 @@ class TestUpdateUser:
         r = client_as(eca_admin).patch(f"/users/{MISSING_ID}", json={"phone": "1"})
         assert r.status_code == 404
 
-    def test_duplicate_tax_id_conflicts(self, client_as, eca_admin, db):
+    def test_duplicate_tax_id_conflicts(self, client_as, db):
         a = factories.make_user(db, "b2b_client")
         b = factories.make_user(db, "b2b_client")
-        r = client_as(eca_admin).patch(f"/users/{b.id}", json={"tax_id": a.tax_id})
+        r = client_as(b).patch(f"/users/{b.id}", json={"tax_id": a.tax_id})
         assert r.status_code == 409
 
 
