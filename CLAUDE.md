@@ -95,6 +95,14 @@ Cuando modifiques cualquiera de los archivos clave listados abajo, **siempre** r
 ### `app/domains/auth/router.py` o cualquier `router.py`
 - **`docs.py` del mismo dominio** — ¿las descripciones del endpoint coinciden con la lógica actual?
 
+### `pyproject.toml` / `poetry.lock` (dependencias) — también al usar `poetry add`, `remove`, `update` o `lock`
+Toda dependencia nueva o actualizada deja **desactualizada la imagen de desarrollo**: el contenedor sigue "Up" pero la API deja de responder con `ModuleNotFoundError`. Ya pasó dos veces. Al tocar dependencias, en la misma sesión:
+- **Reconstruye la imagen:** `docker compose up -d --build --no-deps app` (o, más rápido, `docker compose restart app`: el contenedor instala lo que falte antes de arrancar).
+- **Comprueba que responde:** `curl localhost:8000/health/ready` debe dar 200 (si no, `docker compose logs --tail 30 app`).
+- Corre `poetry run pip-audit` y la verificación completa (ruff, mypy, pytest).
+- Una dependencia que la app usa en producción va en el grupo principal, no en `dev`; `Dockerfile.prod` instala desde `poetry.lock` y no necesita cambios.
+- **Avisa al usuario** (y en la descripción del PR) que se agregaron dependencias: cualquiera que haga `git pull` debe reiniciar o reconstruir. El hook `scripts/impact_check.py` lo recuerda al editar estos archivos o ejecutar `poetry add/remove/update/lock`.
+
 ### `migrations/versions/`
 Al crear o modificar una migración, recuerda al usuario aplicarla con:
 ```bash
