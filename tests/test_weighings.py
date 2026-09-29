@@ -2,7 +2,11 @@
 from decimal import Decimal
 
 from app.domains.inventory.models import InventoryItem
-from app.domains.transactions.models import Transaction, TransactionStatus, TransactionType
+from app.domains.transactions.models import (
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from tests import factories
 
 MISSING_ID = "00000000-0000-0000-0000-000000000000"
