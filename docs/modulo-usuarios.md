@@ -63,7 +63,7 @@ o
 ```
 
 **Lógica al verificar (`verified`):**
-- Asigna `password_hash = hash(id_number)` — el reciclador puede ingresar usando su número de cédula como contraseña inicial
+- Envía al correo del reciclador un enlace de activación de un solo uso (48 h); el reciclador crea su contraseña en `POST /auth/activate`. No se deriva ninguna contraseña de sus datos personales
 - Registra `verified_at = now(UTC)` y `verified_by = current_user.id`
 - Limpia `rejection_reason = None`
 
@@ -96,7 +96,7 @@ Reciclador se registra (POST /auth/register)
 Operador revisa en pantalla Recicladores
     → PATCH /users/{id}/verification-status { status: "verified" }
         → reciclador puede aparecer en selector de pesajes
-        → contraseña inicial = su número de cédula
+        → recibe por correo un enlace para crear su contraseña (POST /auth/activate)
     — o —
     → PATCH /users/{id}/verification-status { status: "rejected", rejection_reason: "..." }
         → no puede participar en pesajes

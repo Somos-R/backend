@@ -66,6 +66,12 @@ def _user_from_token(token: str, db: Session):
     user = db.get(User, uuid.UUID(user_id))
     if user is None:
         raise invalid
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="La cuenta está desactivada",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 

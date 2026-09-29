@@ -1,8 +1,9 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,11 +18,28 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.domains.auth.docs import LOGIN_DOCS, LOGOUT_DOCS, REGISTER_DOCS
+from app.domains.auth import service as auth_service
+from app.domains.auth.docs import (
+    ACTIVATE_DOCS,
+    CHANGE_PASSWORD_DOCS,
+    FORGOT_PASSWORD_DOCS,
+    LOGIN_DOCS,
+    LOGOUT_DOCS,
+    REGISTER_DOCS,
+    RESEND_VERIFICATION_DOCS,
+    RESET_PASSWORD_DOCS,
+    VERIFY_EMAIL_DOCS,
+)
 from app.domains.auth.models import RevokedToken
 from app.domains.auth.schemas import (
+    ActivateRequest,
+    ChangePasswordRequest,
+    ForgotPasswordRequest,
     LoginRequest,
+    MessageResponse,
     RegisterRequest,
+    ResetPasswordRequest,
+    TokenRequest,
     TokenResponse,
     UserResponse,
 )
@@ -54,6 +72,7 @@ def logout(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
 def register(
     request: RegisterRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: User | None = Depends(get_optional_user),
 ):
@@ -82,6 +101,12 @@ def register(
 
     try:
         db.add(user)
+        db.flush()
+        # Recyclers confirm their email when they activate the account; everyone else confirms now.
+        verification_token = (
+            None if user.user_type_code == "recycler"
+            else auth_service.issue_token(db, user, auth_service.VERIFY_EMAIL)
+        )
         db.commit()
         db.refresh(user)
     except IntegrityError:
@@ -91,12 +116,15 @@ def register(
             detail="Email or ID number already registered",
         )
 
+    if verification_token:
+        background_tasks.add_task(
+            auth_service.send_verification_email, user.email, user.full_name, verification_token)
     return user
 
 
 @router.post("/login", response_model=TokenResponse, **LOGIN_DOCS)
 def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
+    user = db.query(User).filter(func.lower(User.email) == request.email.strip().lower()).first()
 
     if not user or not verify_password(request.password, user.password_hash):
         raise HTTPException(
@@ -104,6 +132,9 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
 
     if user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified:
         raise HTTPException(
@@ -117,3 +148,80 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
         "role": user.role_code,
     })
     return TokenResponse(access_token=token)
+
+
+@router.post("/activate", response_model=MessageResponse, **ACTIVATE_DOCS)
+def activate_account(request: ActivateRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, request.token, auth_service.ACTIVATE)
+    if user.user_type_code != "recycler" or user.password_hash:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=auth_service.INVALID_LINK)
+
+    user.password_hash = hash_password(request.password)
+    user.email_verified_at = datetime.now(timezone.utc)
+    db.commit()
+    return MessageResponse(message="Cuenta activada. Ya puedes iniciar sesión")
+
+
+@router.post("/verify-email", response_model=MessageResponse, **VERIFY_EMAIL_DOCS)
+def verify_email(request: TokenRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, request.token, auth_service.VERIFY_EMAIL)
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)
+    db.commit()
+    return MessageResponse(message="Correo confirmado")
+
+
+@router.post("/resend-verification", response_model=MessageResponse, **RESEND_VERIFICATION_DOCS)
+def resend_verification(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if user.email_verified_at is None:
+        token = auth_service.issue_token(db, user, auth_service.VERIFY_EMAIL)
+        db.commit()
+        background_tasks.add_task(
+            auth_service.send_verification_email, user.email, user.full_name, token)
+    return MessageResponse(message="Si tu correo no estaba confirmado, te enviamos un nuevo enlace")
+
+
+@router.post("/forgot-password", response_model=MessageResponse, **FORGOT_PASSWORD_DOCS)
+def forgot_password(
+    request: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(func.lower(User.email) == request.email).first()
+    # Same answer whether or not the account exists; pending recyclers (no password yet) get nothing.
+    if user is not None and user.is_active and user.password_hash:
+        token = auth_service.issue_token(db, user, auth_service.RESET_PASSWORD)
+        db.commit()
+        background_tasks.add_task(
+            auth_service.send_password_reset_email, user.email, user.full_name, token)
+    return MessageResponse(
+        message="Si el correo está registrado, te enviamos un enlace para restablecer la contraseña")
+
+
+@router.post("/reset-password", response_model=MessageResponse, **RESET_PASSWORD_DOCS)
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, request.token, auth_service.RESET_PASSWORD)
+    user.password_hash = hash_password(request.password)
+    if user.email_verified_at is None:
+        user.email_verified_at = datetime.now(timezone.utc)  # they proved control of the inbox
+    db.commit()
+    return MessageResponse(message="Contraseña actualizada. Ya puedes iniciar sesión")
+
+
+@router.post("/change-password", response_model=MessageResponse, **CHANGE_PASSWORD_DOCS)
+def change_password(
+    request: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not verify_password(request.current_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual es incorrecta")
+
+    user.password_hash = hash_password(request.new_password)
+    db.commit()
+    return MessageResponse(message="Contraseña actualizada")

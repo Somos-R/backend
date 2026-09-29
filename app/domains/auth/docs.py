@@ -104,3 +104,81 @@ Por seguridad, el error 401 no indica si el email existe o no.
         },
     },
 }
+
+
+_BAD_LINK: dict[int | str, dict[str, Any]] = {
+    400: {
+        "description": "El enlace es inválido, ya fue usado o expiró",
+        "content": {"application/json": {"example": {"detail": "El enlace es inválido, ya fue usado o expiró"}}},
+    },
+}
+
+_PASSWORD_POLICY = """
+**Política de contraseña:** mínimo 10 caracteres, máximo 72 bytes, no puede ser solo números,
+demasiado repetitiva ni una contraseña común."""
+
+ACTIVATE_DOCS: dict[str, Any] = {
+    "summary": "Activar cuenta de reciclador",
+    "description": f"""
+El reciclador recibe por correo un enlace de un solo uso cuando la asociación verifica su perfil
+(`PATCH /users/{{id}}/verification-status`). Este endpoint recibe el `token` del enlace y la
+contraseña elegida, y deja la cuenta lista para iniciar sesión.
+{_PASSWORD_POLICY}
+
+El enlace vence a las 48 horas y solo puede usarse una vez. No requiere autenticación.
+""",
+    "responses": _BAD_LINK,
+}
+
+VERIFY_EMAIL_DOCS: dict[str, Any] = {
+    "summary": "Confirmar correo electrónico",
+    "description": """
+Confirma el correo con el `token` del enlace enviado al registrarse. Marca `email_verified_at`.
+El enlace vence a las 24 horas y solo puede usarse una vez. No requiere autenticación.
+""",
+    "responses": _BAD_LINK,
+}
+
+RESEND_VERIFICATION_DOCS: dict[str, Any] = {
+    "summary": "Reenviar correo de confirmación",
+    "description": """
+Envía un nuevo enlace de confirmación al correo del usuario autenticado y anula el anterior.
+Si el correo ya está confirmado no envía nada. Requiere autenticación con **Bearer token**.
+""",
+}
+
+FORGOT_PASSWORD_DOCS: dict[str, Any] = {
+    "summary": "Solicitar restablecimiento de contraseña",
+    "description": """
+Envía un enlace de restablecimiento al correo indicado, si corresponde a una cuenta activa con
+contraseña. **Siempre responde 200 con el mismo mensaje**, exista o no la cuenta, para no revelar
+qué correos están registrados. El enlace vence a los 60 minutos. No requiere autenticación.
+""",
+}
+
+RESET_PASSWORD_DOCS: dict[str, Any] = {
+    "summary": "Restablecer contraseña",
+    "description": f"""
+Establece una nueva contraseña con el `token` recibido por correo.
+{_PASSWORD_POLICY}
+
+El enlace solo puede usarse una vez. No requiere autenticación.
+""",
+    "responses": _BAD_LINK,
+}
+
+CHANGE_PASSWORD_DOCS: dict[str, Any] = {
+    "summary": "Cambiar contraseña",
+    "description": f"""
+Cambia la contraseña del usuario autenticado. Requiere la contraseña actual.
+{_PASSWORD_POLICY}
+
+Requiere autenticación con **Bearer token**.
+""",
+    "responses": {
+        400: {
+            "description": "La contraseña actual es incorrecta",
+            "content": {"application/json": {"example": {"detail": "La contraseña actual es incorrecta"}}},
+        },
+    },
+}

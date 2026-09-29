@@ -62,11 +62,11 @@ sequenceDiagram
         API->>DB: SELECT User WHERE id = {id}
         DB-->>API: User (pending)
 
-        API->>API: password_hash = bcrypt(id_number)
-        Note over API: Contraseña inicial = número de cédula
-
-        API->>DB: UPDATE User<br/>SET verification_status = "verified",<br/>    password_hash = bcrypt(id_number),<br/>    verified_at = now(UTC),<br/>    verified_by = current_user.id,<br/>    rejection_reason = null
+        API->>DB: UPDATE User<br/>SET verification_status = "verified",<br/>    verified_at = now(UTC),<br/>    verified_by = current_user.id,<br/>    rejection_reason = null
+        API->>DB: INSERT one_time_tokens (purpose = "activate", sha256 del token)
         DB-->>API: User actualizado
+        API-)Reciclador: Correo con enlace de activación (un solo uso, 48 h)
+        Note over API: Sin contraseña hasta que el reciclador la crea<br/>en POST /auth/activate
 
         API-->>FE: UserDetailResponse (verified)
         FE->>FE: invalidateQueries(['recyclers'])

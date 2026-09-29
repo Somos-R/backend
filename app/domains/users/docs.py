@@ -83,11 +83,13 @@ Requiere autenticación con **Bearer token**.
 
 **Estados disponibles:**
 - `pending` → Pendiente (estado inicial al registrar)
-- `verified` → Verificado — se asigna automáticamente la contraseña con el número de documento del reciclador
+- `verified` → Verificado — se envía al correo del reciclador un enlace de un solo uso para crear su contraseña
 - `rejected` → Rechazado — se debe incluir `rejection_reason` explicando el motivo
 
-Cuando el reciclador pasa a estado `verified`, su contraseña queda configurada como su `id_number`,
-permitiéndole iniciar sesión desde ese momento en `POST /auth/login`.
+Cuando el reciclador pasa a estado `verified` recibe un correo con un enlace (vigente 48 horas, de un solo
+uso). Con el `token` del enlace crea su contraseña en `POST /auth/activate` y desde ese momento puede iniciar
+sesión en `POST /auth/login`. Nunca se deriva una contraseña de sus datos personales. Si ya tenía contraseña
+(por ejemplo, fue rechazado y luego verificado de nuevo), no se envía un enlace nuevo.
 """,
     "responses": {
         400: {

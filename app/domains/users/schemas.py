@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domains.users.enums import VerificationStatus
 
@@ -10,36 +10,36 @@ class UpdateUserRequest(BaseModel):
     """Todos los campos son opcionales — solo se actualizan los que se envíen."""
 
     # Common
-    full_name: str | None = None
-    phone: str | None = None
-    role_code: str | None = None
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=20)
+    role_code: str | None = Field(default=None, max_length=20)
 
     # citizen / building
-    address: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    address: str | None = Field(default=None, max_length=500)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
 
     # building
-    building_name: str | None = None
-    num_units: int | None = None
-    representation_document: str | None = None
+    building_name: str | None = Field(default=None, max_length=255)
+    num_units: int | None = Field(default=None, ge=1, le=100000)
+    representation_document: str | None = Field(default=None, max_length=2048)
 
     # recycler
-    profile_picture: str | None = None
-    id_picture: str | None = None
+    profile_picture: str | None = Field(default=None, max_length=2048)
+    id_picture: str | None = Field(default=None, max_length=2048)
 
     # eca
-    employee_code: str | None = None
+    employee_code: str | None = Field(default=None, max_length=50)
     permissions: dict | None = None
 
     # association
-    association_nit: str | None = None
-    legal_representative: str | None = None
+    association_nit: str | None = Field(default=None, max_length=50)
+    legal_representative: str | None = Field(default=None, max_length=255)
 
     # b2b_client
-    company_name: str | None = None
-    tax_id: str | None = None
-    commercial_contact: str | None = None
+    company_name: str | None = Field(default=None, max_length=255)
+    tax_id: str | None = Field(default=None, max_length=50)
+    commercial_contact: str | None = Field(default=None, max_length=255)
     rep_goals: dict | None = None
 
     # recycler / eca / association
@@ -80,6 +80,8 @@ class UserDetailResponse(BaseModel):
     id_number: str
     user_type_code: str
     role_code: str | None
+    is_active: bool
+    email_verified_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
