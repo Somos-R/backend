@@ -14,3 +14,10 @@ k8s/
 docs/
 README.md
 docker-compose.yml
+.github
+tests/
+.mypy_cache
+.ruff_cache
+ruff.toml
+.claude
+.env.example

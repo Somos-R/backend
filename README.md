@@ -72,7 +72,7 @@ Esto levanta tres contenedores:
 |------------|-------------|--------|
 | `somos-r-db` | PostgreSQL 15 + PostGIS | `5432` |
 | `somos-r-backend` | FastAPI con hot-reload | `8000` |
-| `somos-r-pgadmin` | Interfaz web para la DB (opcional) | `5050` |
+| `somos-r-pgadmin` | Interfaz web para la DB (opcional, `docker compose --profile tools up -d`) | `5050` |
 
 Para verificar que todo está corriendo:
 

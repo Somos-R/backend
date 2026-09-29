@@ -175,7 +175,8 @@ class TestDeploymentWarnings:
         assert _settings().deployment_warnings() == []
 
     def test_a_default_prod_config_is_flagged_item_by_item(self):
-        warnings = " | ".join(_settings(app_env="prod").deployment_warnings())
+        warnings = " | ".join(
+            _settings(app_env="prod", email_backend="console").deployment_warnings())
         for expected in ("EMAIL_BACKEND=console", "in-memory", "ALLOWED_HOSTS=*",
                          "localhost origins", "FRONTEND_URL points to localhost"):
             assert expected in warnings

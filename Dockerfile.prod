@@ -16,12 +16,30 @@ RUN poetry config virtualenvs.in-project true && \
 FROM python:3.11-slim
 WORKDIR /app
 
+# WEB_CONCURRENCY : uvicorn worker processes (each opens its own DB pool; see DB_POOL_SIZE)
+# PORT            : port to listen on (Railway and most platforms inject it)
+# FORWARDED_ALLOW_IPS : proxies whose X-Forwarded-* headers are trusted, which is what makes the
+#                   per-IP rate limit see the real client. "*" is right only when the app is
+#                   reachable exclusively through the platform's proxy; otherwise list its IPs.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    WEB_CONCURRENCY=2 \
+    PORT=8000 \
+    FORWARDED_ALLOW_IPS="*"
 
-COPY --from=builder /app/.venv ./.venv
-COPY . .
+# Run as an unprivileged user: a compromised process must not own the filesystem or be root.
+RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
 
+COPY --from=builder --chown=app:app /app/.venv ./.venv
+COPY --chown=app:app . .
+
+USER app
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+
+# /health/live never touches the database, so a slow DB does not get the container killed.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health/live' % os.environ.get('PORT', '8000'), timeout=4)"
+
+# Shell form only to expand the variables; `exec` makes uvicorn PID 1 so it receives SIGTERM.
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY} --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS}\""]

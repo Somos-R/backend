@@ -16,7 +16,7 @@ Esto no es teórico: este repo tuvo ~4 meses de trabajo real (dominios de invent
 ## Comandos de desarrollo
 
 ```bash
-# Iniciar todos los servicios (app, postgres, pgadmin)
+# Iniciar los servicios (app, postgres). pgAdmin es opcional: agregar `--profile tools`
 docker compose up -d --build
 
 # Ver logs del backend en tiempo real
@@ -45,7 +45,7 @@ docker compose exec app poetry run pytest --cov
 
 **Tests:** `tests/conftest.py` recrea una base `<nombre>_test` (nunca toca la de desarrollo) y la migra con Alembic en cada sesión; cada test corre en una transacción con rollback. Necesita Postgres/PostGIS arriba (`docker compose up -d postgres`). `tests/test_known_issues.py` contiene brechas de seguridad conocidas como `xfail(strict=True)`: al corregir una, su test pasa, falla por ser estricto, y hay que quitar la marca. `tests/test_concurrency.py` es la excepción al aislamiento por rollback: confirma datos reales para que varios hilos compitan, y limpia las tablas al terminar.
 
-URLs locales: API `http://localhost:8000` · Swagger `http://localhost:8000/docs` · ReDoc `http://localhost:8000/redoc` · pgAdmin `http://localhost:5050`
+URLs locales: API `http://localhost:8000` · Swagger `http://localhost:8000/docs` · ReDoc `http://localhost:8000/redoc` · pgAdmin `http://localhost:5050` (solo con `--profile tools`). Los puertos quedan publicados únicamente en `127.0.0.1`; las credenciales de desarrollo se pueden cambiar en un `.env` (ver `.env.example`). Producción: `docs/despliegue.md`.
 
 ## Arquitectura
 
