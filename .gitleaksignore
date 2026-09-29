@@ -2,3 +2,5 @@
 # Format: <commit>:<file>:<rule>:<line>
 67cb3567f55bc98d38b3cfa915f9f244aafa799c:tests/test_account_flows.py:generic-api-key:93
 67cb3567f55bc98d38b3cfa915f9f244aafa799c:tests/test_account_flows.py:generic-api-key:160
+# Fake password used in a test that checks passwords are never written to the audit trail.
+d85a6676bcd08b2b24d66d99889603b174f7deda:tests/test_audit.py:generic-api-key:219

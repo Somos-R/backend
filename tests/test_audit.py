@@ -216,7 +216,7 @@ class TestAuthEvents:
         assert response.status_code in (401, 403)
 
     def test_the_attempted_email_and_password_are_never_stored(self, client, db):
-        client.post("/auth/login", json={"email": "secreto@privado.com", "password": "ClaveMuySecreta1"})
+        client.post("/auth/login", json={"email": "secreto@privado.com", "password": "ClaveMuySecreta1"})  # gitleaks:allow  (fake test password)
         dump = json.dumps([(r.details, r.target_id, r.action) for r in rows(db)])
         assert "secreto@privado.com" not in dump and "ClaveMuySecreta1" not in dump
 
