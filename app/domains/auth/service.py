@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.email import send_email
 from app.core.security import create_access_token
+from app.domains.audit import service as audit
+from app.domains.audit.actions import FAILURE, Action
 from app.domains.auth.models import OneTimeToken, RefreshToken
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
@@ -193,6 +195,13 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
 
     now = datetime.now(timezone.utc)
     if row.used_at is not None or row.revoked_at is not None:
+        # A token that was already rotated coming back means someone kept a copy. A merely revoked
+        # one (after logout, password change) is an ordinary stale client.
+        stolen = row.used_at is not None
+        audit.record(
+            db, Action.REFRESH_REUSE_DETECTED if stolen else Action.REFRESH_DENIED, outcome=FAILURE,
+            target_type="user", target_id=row.user_id,
+            details={"family_id": str(row.family_id), "reason": "rotated_token_reused" if stolen else "revoked"})
         revoke_family(db, row.family_id)
         db.commit()
         raise _refresh_unauthorized()
@@ -205,6 +214,8 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
         or not user.is_active
         or (user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified)
     ):
+        audit.record(db, Action.REFRESH_DENIED, outcome=FAILURE, target_type="user", target_id=row.user_id,
+                     details={"family_id": str(row.family_id), "reason": "account_inactive_or_unverified"})
         revoke_family(db, row.family_id)
         db.commit()
         raise _refresh_unauthorized()

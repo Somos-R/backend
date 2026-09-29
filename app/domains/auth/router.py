@@ -26,6 +26,8 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.domains.audit import service as audit
+from app.domains.audit.actions import FAILURE, Action
 from app.domains.auth import service as auth_service
 from app.domains.auth.docs import (
     ACTIVATE_DOCS,
@@ -67,7 +69,7 @@ DUMMY_PASSWORD_HASH = hash_password(secrets.token_hex(16))
 def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    actor: User = Depends(get_current_user),
 ):
     payload = decode_access_token(credentials.credentials)
     db.add(RevokedToken(
@@ -76,6 +78,7 @@ def logout(
     ))
     if payload.get("fid"):
         auth_service.revoke_family(db, uuid.UUID(payload["fid"]))
+    audit.record(db, Action.LOGOUT, actor=actor, target_type="user", target_id=actor.id)
     db.commit()
     return {"message": "Sesión cerrada exitosamente"}
 
@@ -121,6 +124,9 @@ def register(
             None if user.user_type_code == "recycler"
             else auth_service.issue_token(db, user, auth_service.VERIFY_EMAIL)
         )
+        audit.record(
+            db, Action.USER_REGISTERED, actor=actor, target_type="user", target_id=user.id,
+            details={"user_type": user.user_type_code, "role_code": user.role_code})
         db.commit()
         db.refresh(user)
     except IntegrityError:
@@ -150,7 +156,16 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     if user is None or locked or not password_ok:
         if user is not None and not locked and user.password_hash:
             auth_service.register_failed_login(user)
-            db.commit()
+        # The client only ever sees one answer; the trail records the real reason. The attempted
+        # email is not stored: it is attacker-controlled text and, for typos, someone else's data.
+        reason = (
+            "unknown_account" if user is None else "locked" if locked
+            else "no_password" if not user.password_hash else "bad_password"
+        )
+        audit.record(
+            db, Action.LOGIN_FAILED, outcome=FAILURE, target_type="user" if user else None,
+            target_id=user.id if user else None, details={"reason": reason})
+        db.commit()  # persist the failure even though the request is about to fail
         # One answer for unknown account, wrong password and temporary lock.
         metrics.LOGINS.labels("failed").inc()
         raise HTTPException(
@@ -164,10 +179,16 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         db.commit()
 
     if not user.is_active:
+        audit.record(db, Action.LOGIN_FAILED, outcome=FAILURE, target_type="user",
+                     target_id=user.id, details={"reason": "inactive"})
+        db.commit()
         metrics.LOGINS.labels("blocked").inc()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
 
     if user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified:
+        audit.record(db, Action.LOGIN_FAILED, outcome=FAILURE, target_type="user",
+                     target_id=user.id, details={"reason": "pending_verification"})
+        db.commit()
         metrics.LOGINS.labels("blocked").inc()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -175,6 +196,7 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         )
 
     refresh_token, family_id = auth_service.issue_refresh_token(db, user)
+    audit.record(db, Action.LOGIN, actor=user, target_type="user", target_id=user.id)
     db.commit()
     metrics.LOGINS.labels("success").inc()
     return TokenResponse(**auth_service.build_token_response(user, refresh_token, family_id))
@@ -199,6 +221,7 @@ def activate_account(request: Request, body: ActivateRequest, db: Session = Depe
     user.email_verified_at = datetime.now(timezone.utc)
     auth_service.clear_login_failures(user)
     auth_service.revoke_all_sessions(db, user)
+    audit.record(db, Action.ACCOUNT_ACTIVATED, actor=user, target_type="user", target_id=user.id)
     db.commit()
     return MessageResponse(message="Cuenta activada. Ya puedes iniciar sesión")
 
@@ -209,6 +232,7 @@ def verify_email(request: Request, body: TokenRequest, db: Session = Depends(get
     user = auth_service.consume_token(db, body.token, auth_service.VERIFY_EMAIL)
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
+    audit.record(db, Action.EMAIL_VERIFIED, actor=user, target_type="user", target_id=user.id)
     db.commit()
     return MessageResponse(message="Correo confirmado")
 
@@ -240,6 +264,7 @@ def forgot_password(
     # Same answer whether or not the account exists; pending recyclers (no password yet) get nothing.
     if user is not None and user.is_active and user.password_hash:
         token = auth_service.issue_token(db, user, auth_service.RESET_PASSWORD)
+        audit.record(db, Action.PASSWORD_RESET_REQUESTED, target_type="user", target_id=user.id)
         db.commit()
         background_tasks.add_task(
             auth_service.send_password_reset_email, user.email, user.full_name, token)
@@ -256,6 +281,7 @@ def reset_password(request: Request, body: ResetPasswordRequest, db: Session = D
     auth_service.revoke_all_sessions(db, user)
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)  # they proved control of the inbox
+    audit.record(db, Action.PASSWORD_RESET, actor=user, target_type="user", target_id=user.id)
     db.commit()
     return MessageResponse(message="Contraseña actualizada. Ya puedes iniciar sesión")
 
@@ -270,11 +296,16 @@ def change_password(
     user: User = Depends(get_current_user),
 ):
     if not verify_password(body.current_password, user.password_hash):
+        # Someone holding a live session guessing the current password is worth knowing about.
+        audit.record(db, Action.PASSWORD_CHANGE_FAILED, actor=user, outcome=FAILURE,
+                     target_type="user", target_id=user.id)
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual es incorrecta")
 
     user.password_hash = hash_password(body.new_password)
     # Every session, including this one, must sign in again with the new password.
     auth_service.revoke_all_sessions(db, user)
+    audit.record(db, Action.PASSWORD_CHANGED, actor=user, target_type="user", target_id=user.id)
     db.commit()
     return MessageResponse(message="Contraseña actualizada. Inicia sesión de nuevo")

@@ -95,6 +95,8 @@ MATRIX = [
      lambda w: {"status": "cancelado"}, {"eca_admin", "eca_warehouse"}),
     ("transactions:pay", "PATCH", lambda w: f"/transactions/{w['venta'].id}/status",
      lambda w: {"status": "pagado"}, {"eca_admin", "association_admin"}),
+
+    ("audit:list", "GET", lambda w: "/audit-log", None, {"association_admin"}),
 ]
 
 

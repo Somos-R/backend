@@ -16,6 +16,8 @@ from app.core.permissions import (
     has_role,
 )
 from app.core.security import get_current_user, require_roles
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
@@ -113,7 +115,7 @@ def weighing_stats(
 def create_weighing(
     request: CreateWeighingRequest,
     db:      Session = Depends(get_db),
-    _:       User    = Depends(require_roles(*WEIGHINGS_CREATE)),
+    actor:   User    = Depends(require_roles(*WEIGHINGS_CREATE)),
 ):
     recycler = db.get(User, request.recycler_id)
     if not recycler or recycler.user_type_code != "recycler":
@@ -134,6 +136,10 @@ def create_weighing(
         precio_kg=request.precio_kg,
     )
     db.add(weighing)
+    audit.record(
+        db, Action.WEIGHING_CREATED, actor=actor, target_type="weighing", target_id=weighing.id,
+        details={"recycler_id": str(request.recycler_id), "material": request.material_code,
+                 "kg": str(request.kg), "precio_kg": str(request.precio_kg)})
     db.commit()
     db.refresh(weighing)
     return weighing
@@ -167,6 +173,8 @@ def update_weighing_status(
     if not weighing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 
+    previous = weighing.estado.value
+
     if request.status == WeighingStatus.validado:
         weighing_service.validate_weighing(db, weighing, current_user.id)
     elif request.status == WeighingStatus.rechazado:
@@ -181,6 +189,13 @@ def update_weighing_status(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no válida")
 
+    audit.record(
+        db,
+        {WeighingStatus.validado: Action.WEIGHING_VALIDATED, WeighingStatus.rechazado: Action.WEIGHING_REJECTED,
+         WeighingStatus.pagado: Action.WEIGHING_PAID}[request.status],
+        actor=current_user, target_type="weighing", target_id=weighing.id,
+        details={"from": previous, "material": weighing.material_code, "kg": str(weighing.kg),
+                 "precio_kg": str(weighing.precio_kg), "recycler_id": str(weighing.recycler_id)})
     db.commit()
     db.refresh(weighing)
     return weighing

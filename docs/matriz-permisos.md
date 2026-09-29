@@ -51,6 +51,7 @@ Reglas generales:
 | `POST /transactions` (venta) | — | — | — | ✅ | — | ✅ | — | — |
 | `PATCH /transactions/{id}/status` → `cancelado` / `entregado` | — | — | — | ✅ | — | ✅ | — | — |
 | `PATCH /transactions/{id}/status` → `pagado` | ✅ | — | — | ✅ | — | — | — | — |
+| `GET /audit-log` | ✅ | — | — | — | — | — | — | — |
 
 Notas de comportamiento:
 
@@ -58,6 +59,8 @@ Notas de comportamiento:
 - `GET /users/{id}` sobre alguien fuera del alcance del rol da 403.
 
 ## Supuestos a confirmar
+
+0. **Auditoría:** solo `association_admin` puede consultar `GET /audit-log` (es el rol con más alcance de la matriz). El `eca_admin` no ve el registro, ni siquiera el de su propia organización; si hace falta, se puede abrir con un filtro por organización.
 
 El documento técnico define los roles pero no los permisos por endpoint; estos puntos son **decisiones tomadas por criterio** y conviene validarlas con el equipo:
 

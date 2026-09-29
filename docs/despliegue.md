@@ -56,6 +56,10 @@ No usar `/health/ready` como criterio de reinicio: una caída de la base reinici
 
 Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade head` (automatizarlo en el deploy es la tarea 5.8). Las migraciones 0011 y 0012 fallan sin cambiar nada si ya hay datos que violen las restricciones nuevas.
 
+## 4b. Registro de auditoría en producción
+
+La tabla `audit_log` rechaza `UPDATE` y `DELETE` con un trigger, pero el dueño de la tabla aún puede hacer `TRUNCATE` o `DROP`. En producción, **la aplicación no debe conectarse con el rol dueño**: usa un rol para las migraciones y otro, con permisos mínimos, para la app (`SELECT`/`INSERT` sobre `audit_log`, sin `TRUNCATE`, `DROP` ni `ALTER`). Define además la política de retención (ver `docs/auditoria.md`).
+
 ## 5. Tareas programadas
 
 `python scripts/purge_expired_tokens.py` una vez al día (borra tokens vencidos).

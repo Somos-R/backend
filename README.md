@@ -331,6 +331,10 @@ Todos los endpoints protegidos requieren header `Authorization: Bearer <token>`.
 
 Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verification_status`, `limit`, `offset`.
 
+### Auditoría — `/audit-log`
+
+Solo `association_admin`. `GET /audit-log` lista los eventos de seguridad y de negocio (filtros por acción, actor, objetivo, fechas y `request_id`). Ver `docs/auditoria.md`.
+
 ### Catálogos — `/catalogs`
 
 | Método | Ruta | Descripción | Auth |

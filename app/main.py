@@ -15,6 +15,7 @@ from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.core.structured_logging import configure_logging
+from app.domains.audit.router import router as audit_router
 from app.domains.auth.router import router as auth_router
 from app.domains.catalogs.router import router as catalogs_router
 from app.domains.inventory.router import router as inventory_router
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(inventory_router)
     app.include_router(weighings_router)
     app.include_router(transactions_router)
+    app.include_router(audit_router)
     return app
 
 

@@ -41,6 +41,8 @@ TRANSACTIONS_WRITE = frozenset({ECA_ADMIN, ECA_WAREHOUSE})
 
 PAYMENTS = frozenset({ECA_ADMIN, ASSOC_ADMIN})
 
+AUDIT_READ = frozenset({ASSOC_ADMIN})
+
 # Profile fields that only an organization admin may change (never self-service).
 PRIVILEGED_USER_FIELDS = frozenset({"role_code", "permissions", "association_id", "employee_code"})
 
