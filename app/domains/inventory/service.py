@@ -27,19 +27,19 @@ def add_stock(
     material_code: str,
     warehouse_id: uuid.UUID,
     kg: Decimal,
-    precio_kg: Decimal | None,
+    price_per_kg: Decimal | None,
 ) -> InventoryItem:
     """Add `kg` to (material, warehouse), creating the row if needed, in one upsert.
 
-    `precio_kg=None` leaves the stored price untouched (used when returning stock,
+    `price_per_kg=None` leaves the stored price untouched (used when returning stock,
     which must not reprice what is already there).
     """
     now = datetime.now(timezone.utc)
     stock_col = InventoryItem.__table__.c.stock_kg
 
-    on_conflict: dict = {"stock_kg": stock_col + kg, "fecha_actualizacion": now}
-    if precio_kg is not None:
-        on_conflict["precio_kg"] = precio_kg
+    on_conflict: dict = {"stock_kg": stock_col + kg, "updated_at": now}
+    if price_per_kg is not None:
+        on_conflict["price_per_kg"] = price_per_kg
 
     statement = (
         insert(InventoryItem)
@@ -48,8 +48,8 @@ def add_stock(
             material_code=material_code,
             warehouse_id=warehouse_id,
             stock_kg=kg,
-            precio_kg=precio_kg if precio_kg is not None else Decimal("0"),
-            fecha_actualizacion=now,
+            price_per_kg=price_per_kg if price_per_kg is not None else Decimal("0"),
+            updated_at=now,
         )
         .on_conflict_do_update(constraint="uq_inventory_material_warehouse", set_=on_conflict)
         .returning(InventoryItem.id)
@@ -74,7 +74,7 @@ def subtract_stock(
         )
         .values(
             stock_kg=InventoryItem.stock_kg - kg,
-            fecha_actualizacion=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         .returning(InventoryItem.id)
         .execution_options(synchronize_session=False)

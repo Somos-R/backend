@@ -43,14 +43,14 @@ Reglas generales:
 | `GET /weighings`, `/weighings/{id}` | ✅ | ✅ | — | ✅ | ✅ | ✅ | 👤 | — |
 | `GET /weighings/stats` | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
 | `POST /weighings` | — | — | — | ✅ | ✅ | — | — | — |
-| `PATCH /weighings/{id}/status` → `validado` / `rechazado` | ✅ | ✅ | — | ✅ | ✅ | — | — | — |
-| `PATCH /weighings/{id}/status` → `pagado` | ✅ | — | — | ✅ | — | — | — | — |
+| `PATCH /weighings/{id}/status` → `validated` / `rejected` | ✅ | ✅ | — | ✅ | ✅ | — | — | — |
+| `PATCH /weighings/{id}/status` → `paid` | ✅ | — | — | ✅ | — | — | — | — |
 | `GET /inventory` (+ `/stats`, `/materials`, `/warehouses`, `/{id}`) | ✅ | ✅ | — | ✅ | ✅ | ✅ | — | — |
 | `PATCH /inventory/{id}` | — | — | — | ✅ | — | ✅ | — | — |
 | `GET /transactions` (+ `/stats`, `/{id}`) | ✅ | — | — | ✅ | ✅ | ✅ | — | — |
 | `POST /transactions` (venta) | — | — | — | ✅ | — | ✅ | — | — |
-| `PATCH /transactions/{id}/status` → `cancelado` / `entregado` | — | — | — | ✅ | — | ✅ | — | — |
-| `PATCH /transactions/{id}/status` → `pagado` | ✅ | — | — | ✅ | — | — | — | — |
+| `PATCH /transactions/{id}/status` → `cancelled` / `delivered` | — | — | — | ✅ | — | ✅ | — | — |
+| `PATCH /transactions/{id}/status` → `paid` | ✅ | — | — | ✅ | — | — | — | — |
 | `GET /audit-log` | ✅ | — | — | — | — | — | — | — |
 
 Notas de comportamiento:

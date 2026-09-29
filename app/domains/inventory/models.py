@@ -48,7 +48,7 @@ class InventoryItem(Base):
         UniqueConstraint("material_code", "warehouse_id", name="uq_inventory_material_warehouse"),
         CheckConstraint("stock_kg >= 0", name="ck_inventory_stock_non_negative"),
         CheckConstraint("stock_min_kg >= 0", name="ck_inventory_stock_min_non_negative"),
-        CheckConstraint("precio_kg >= 0", name="ck_inventory_price_non_negative"),
+        CheckConstraint("price_per_kg >= 0", name="ck_inventory_price_per_kg_non_negative"),
     )
 
     id:                  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -56,30 +56,30 @@ class InventoryItem(Base):
     warehouse_id:        Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False)
     stock_kg:            Mapped[Decimal]   = mapped_column(Numeric(12, 2), nullable=False, default=0)
     stock_min_kg:        Mapped[Decimal]   = mapped_column(Numeric(12, 2), nullable=False, default=50)
-    precio_kg:           Mapped[Decimal]   = mapped_column(Numeric(10, 2), nullable=False, default=0)
-    fecha_actualizacion: Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    price_per_kg:           Mapped[Decimal]   = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    updated_at: Mapped[datetime]  = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     material:  Mapped["Material"]  = relationship("Material")
     warehouse: Mapped["Warehouse"] = relationship("Warehouse", back_populates="items")
 
     @hybrid_property
-    def estado(self) -> str:
+    def status(self) -> str:
         if self.stock_kg == 0:
-            return "agotado"
+            return "out_of_stock"
         if self.stock_kg < self.stock_min_kg:
-            return "bajo_stock"
-        return "disponible"
+            return "low_stock"
+        return "available"
 
-    @estado.inplace.expression
+    @status.inplace.expression
     @classmethod
-    def _estado_expression(cls):
+    def _status_expression(cls):
         # Same rule as above, evaluated by the database (filters and counts).
         return case(
-            (cls.stock_kg == 0, "agotado"),
-            (cls.stock_kg < cls.stock_min_kg, "bajo_stock"),
-            else_="disponible",
+            (cls.stock_kg == 0, "out_of_stock"),
+            (cls.stock_kg < cls.stock_min_kg, "low_stock"),
+            else_="available",
         )
 
     @property
     def total_value(self) -> Decimal:
-        return self.stock_kg * self.precio_kg
+        return self.stock_kg * self.price_per_kg

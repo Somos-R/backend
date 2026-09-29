@@ -23,12 +23,12 @@ class WeighingResponse(BaseModel):
     material_code:    str
     warehouse_id:     uuid.UUID
     kg:               Decimal
-    precio_kg:        Decimal
-    estado:           WeighingStatus
+    price_per_kg:        Decimal
+    status:           WeighingStatus
     rejection_reason: str | None
     validated_by:     uuid.UUID | None
     validated_at:     datetime | None
-    fecha:            datetime
+    occurred_at:            datetime
     created_at:       datetime
     total_value:      Decimal
     recycler:         RecyclerSummary
@@ -46,9 +46,9 @@ class CreateWeighingRequest(BaseModel):
     material_code: str
     warehouse_id:  uuid.UUID
     kg:            Decimal
-    precio_kg:     Decimal
+    price_per_kg:     Decimal
 
-    @field_validator("kg", "precio_kg")
+    @field_validator("kg", "price_per_kg")
     @classmethod
     def must_be_positive(cls, v: Decimal) -> Decimal:
         if v <= 0:
@@ -63,8 +63,8 @@ class UpdateWeighingStatusRequest(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
-                {"status": "validado"},
-                {"status": "rechazado", "rejection_reason": "Peso incorrecto registrado"},
+                {"status": "validated"},
+                {"status": "rejected", "rejection_reason": "Peso incorrecto registrado"},
             ]
         }
     )

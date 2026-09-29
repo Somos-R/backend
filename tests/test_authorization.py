@@ -33,22 +33,22 @@ def world(db, warehouse):
     item = factories.stock(db, warehouse, kg="100")
 
     weighing = Weighing(
-        recycler_id=other_recycler.id, material_code="plastico", warehouse_id=warehouse.id,
-        kg=Decimal("10"), precio_kg=Decimal("100"))
+        recycler_id=other_recycler.id, material_code="plastic", warehouse_id=warehouse.id,
+        kg=Decimal("10"), price_per_kg=Decimal("100"))
     db.add(weighing)
     admin = factories.make_actor(db, "eca_admin")
-    venta = tx_service.create_venta(
-        db, "plastico", warehouse.id, Decimal("5"), Decimal("100"), created_by=admin.id)
+    sale = tx_service.create_sale(
+        db, "plastic", warehouse.id, Decimal("5"), Decimal("100"), created_by=admin.id)
     db.commit()
     return {
         "recycler": other_recycler, "citizen": other_citizen, "pending": pending_recycler,
-        "item": item, "weighing": weighing, "venta": venta, "warehouse": warehouse,
+        "item": item, "weighing": weighing, "sale": sale, "warehouse": warehouse,
     }
 
 
 def _weighing_body(w):
-    return {"recycler_id": str(w["recycler"].id), "material_code": "plastico",
-            "warehouse_id": str(w["warehouse"].id), "kg": "5", "precio_kg": "100"}
+    return {"recycler_id": str(w["recycler"].id), "material_code": "plastic",
+            "warehouse_id": str(w["warehouse"].id), "kg": "5", "price_per_kg": "100"}
 
 
 # (id, method, path, body, kinds allowed past the authorization layer)
@@ -70,10 +70,10 @@ MATRIX = [
     ("weighings:create", "POST", lambda w: "/weighings", _weighing_body,
      {"eca_admin", "eca_operator"}),
     ("weighings:validate", "PATCH", lambda w: f"/weighings/{w['weighing'].id}/status",
-     lambda w: {"status": "validado"},
+     lambda w: {"status": "validated"},
      {"eca_admin", "eca_operator", "association_admin", "association_operator"}),
     ("weighings:pay", "PATCH", lambda w: f"/weighings/{w['weighing'].id}/status",
-     lambda w: {"status": "pagado"}, {"eca_admin", "association_admin"}),
+     lambda w: {"status": "paid"}, {"eca_admin", "association_admin"}),
 
     ("inventory:list", "GET", lambda w: "/inventory", None, STAFF_NO_ROUTES),
     ("inventory:stats", "GET", lambda w: "/inventory/stats", None, STAFF_NO_ROUTES),
@@ -81,20 +81,20 @@ MATRIX = [
     ("inventory:warehouses", "GET", lambda w: "/inventory/warehouses", None, STAFF_NO_ROUTES),
     ("inventory:get", "GET", lambda w: f"/inventory/{w['item'].id}", None, STAFF_NO_ROUTES),
     ("inventory:patch", "PATCH", lambda w: f"/inventory/{w['item'].id}",
-     lambda w: {"precio_kg": "1"}, {"eca_admin", "eca_warehouse"}),
+     lambda w: {"price_per_kg": "1"}, {"eca_admin", "eca_warehouse"}),
 
     ("transactions:list", "GET", lambda w: "/transactions", None, ECA_STAFF | {"association_admin"}),
     ("transactions:stats", "GET", lambda w: "/transactions/stats", None,
      ECA_STAFF | {"association_admin"}),
-    ("transactions:get", "GET", lambda w: f"/transactions/{w['venta'].id}", None,
+    ("transactions:get", "GET", lambda w: f"/transactions/{w['sale'].id}", None,
      ECA_STAFF | {"association_admin"}),
-    ("transactions:create-venta", "POST", lambda w: "/transactions",
-     lambda w: {"material_code": "plastico", "warehouse_id": str(w["warehouse"].id),
-                "kg": "1", "precio_kg": "100"}, {"eca_admin", "eca_warehouse"}),
-    ("transactions:cancel", "PATCH", lambda w: f"/transactions/{w['venta'].id}/status",
-     lambda w: {"status": "cancelado"}, {"eca_admin", "eca_warehouse"}),
-    ("transactions:pay", "PATCH", lambda w: f"/transactions/{w['venta'].id}/status",
-     lambda w: {"status": "pagado"}, {"eca_admin", "association_admin"}),
+    ("transactions:create-sale", "POST", lambda w: "/transactions",
+     lambda w: {"material_code": "plastic", "warehouse_id": str(w["warehouse"].id),
+                "kg": "1", "price_per_kg": "100"}, {"eca_admin", "eca_warehouse"}),
+    ("transactions:cancel", "PATCH", lambda w: f"/transactions/{w['sale'].id}/status",
+     lambda w: {"status": "cancelled"}, {"eca_admin", "eca_warehouse"}),
+    ("transactions:pay", "PATCH", lambda w: f"/transactions/{w['sale'].id}/status",
+     lambda w: {"status": "paid"}, {"eca_admin", "association_admin"}),
 
     ("audit:list", "GET", lambda w: "/audit-log", None, {"association_admin"}),
 ]
@@ -271,8 +271,8 @@ class TestRecyclerOwnership:
         ids = {}
         for name, owner in (("mine", recycler), ("theirs", other)):
             ids[name] = admin.post("/weighings", json={
-                "recycler_id": str(owner.id), "material_code": "plastico",
-                "warehouse_id": str(warehouse.id), "kg": "10", "precio_kg": "100",
+                "recycler_id": str(owner.id), "material_code": "plastic",
+                "warehouse_id": str(warehouse.id), "kg": "10", "price_per_kg": "100",
             }).json()["id"]
         ids["other_recycler"] = other
         return ids

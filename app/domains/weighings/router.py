@@ -44,7 +44,7 @@ def list_weighings(
     recycler_id:   uuid.UUID | None = Query(default=None),
     material_code: str | None       = Query(default=None),
     warehouse_id:  uuid.UUID | None = Query(default=None),
-    estado:        str | None       = Query(default=None),
+    status_:       WeighingStatus | None = Query(default=None, alias="status"),
     limit:         int              = Query(default=20, ge=1, le=100),
     offset:        int              = Query(default=0, ge=0),
     db:            Session          = Depends(get_db),
@@ -63,8 +63,8 @@ def list_weighings(
         query = query.filter(Weighing.material_code == material_code)
     if warehouse_id:
         query = query.filter(Weighing.warehouse_id == warehouse_id)
-    if estado:
-        query = query.filter(Weighing.estado == estado)
+    if status_:
+        query = query.filter(Weighing.status == status_)
 
     total    = query.count()
     weighings = (
@@ -73,7 +73,7 @@ def list_weighings(
             selectinload(Weighing.material),
             selectinload(Weighing.warehouse),
         )
-        .order_by(Weighing.fecha.desc(), Weighing.id)
+        .order_by(Weighing.occurred_at.desc(), Weighing.id)
         .offset(offset)
         .limit(limit)
         .all()
@@ -89,12 +89,12 @@ def weighing_stats(
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    this_month = Weighing.fecha >= start
+    this_month = Weighing.occurred_at >= start
 
     count_month, total_kg = db.query(
         func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)
     ).filter(this_month).one()
-    pending = db.query(func.count(Weighing.id)).filter(Weighing.estado == WeighingStatus.pendiente).scalar()
+    pending = db.query(func.count(Weighing.id)).filter(Weighing.status == WeighingStatus.pending_validation).scalar()
     by_material = (
         db.query(Weighing.material_code, func.sum(Weighing.kg))
         .filter(this_month)
@@ -133,13 +133,13 @@ def create_weighing(
         material_code=request.material_code,
         warehouse_id=request.warehouse_id,
         kg=request.kg,
-        precio_kg=request.precio_kg,
+        price_per_kg=request.price_per_kg,
     )
     db.add(weighing)
     audit.record(
         db, Action.WEIGHING_CREATED, actor=actor, target_type="weighing", target_id=weighing.id,
         details={"recycler_id": str(request.recycler_id), "material": request.material_code,
-                 "kg": str(request.kg), "precio_kg": str(request.precio_kg)})
+                 "kg": str(request.kg), "price_per_kg": str(request.price_per_kg)})
     db.commit()
     db.refresh(weighing)
     return weighing
@@ -166,36 +166,36 @@ def update_weighing_status(
     current_user: User   = Depends(get_current_user),
 ):
     # Paying moves money; validating/rejecting is the review step.
-    ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.pagado else WEIGHINGS_REVIEW)
+    ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.paid else WEIGHINGS_REVIEW)
 
     # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
     weighing = db.query(Weighing).filter(Weighing.id == weighing_id).with_for_update().first()
     if not weighing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 
-    previous = weighing.estado.value
+    previous = weighing.status.value
 
-    if request.status == WeighingStatus.validado:
+    if request.status == WeighingStatus.validated:
         weighing_service.validate_weighing(db, weighing, current_user.id)
-    elif request.status == WeighingStatus.rechazado:
+    elif request.status == WeighingStatus.rejected:
         if not request.rejection_reason:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="rejection_reason es requerido al rechazar",
             )
         weighing_service.reject_weighing(db, weighing, request.rejection_reason)
-    elif request.status == WeighingStatus.pagado:
+    elif request.status == WeighingStatus.paid:
         weighing_service.mark_paid(db, weighing)
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no válida")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de status no válida")
 
     audit.record(
         db,
-        {WeighingStatus.validado: Action.WEIGHING_VALIDATED, WeighingStatus.rechazado: Action.WEIGHING_REJECTED,
-         WeighingStatus.pagado: Action.WEIGHING_PAID}[request.status],
+        {WeighingStatus.validated: Action.WEIGHING_VALIDATED, WeighingStatus.rejected: Action.WEIGHING_REJECTED,
+         WeighingStatus.paid: Action.WEIGHING_PAID}[request.status],
         actor=current_user, target_type="weighing", target_id=weighing.id,
         details={"from": previous, "material": weighing.material_code, "kg": str(weighing.kg),
-                 "precio_kg": str(weighing.precio_kg), "recycler_id": str(weighing.recycler_id)})
+                 "price_per_kg": str(weighing.price_per_kg), "recycler_id": str(weighing.recycler_id)})
     db.commit()
     db.refresh(weighing)
     return weighing

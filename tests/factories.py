@@ -68,12 +68,12 @@ def first_warehouse(db: Session) -> Warehouse:
 def stock(
     db: Session,
     warehouse: Warehouse,
-    material_code: str = "plastico",
+    material_code: str = "plastic",
     kg: str = "100",
-    precio_kg: str = "500",
+    price_per_kg: str = "500",
 ) -> InventoryItem:
     item = inventory_service.add_stock(
-        db, material_code, warehouse.id, Decimal(kg), Decimal(precio_kg)
+        db, material_code, warehouse.id, Decimal(kg), Decimal(price_per_kg)
     )
     db.commit()
     return item
