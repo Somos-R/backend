@@ -6,7 +6,27 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.domains.inventory import service as inventory_service
+from app.domains.users.enums import VerificationStatus
+from app.domains.users.models import User
 from app.domains.weighings.models import Weighing, WeighingStatus
+
+
+def ensure_recycler_can_deliver(recycler: User | None) -> None:
+    """A weighing needs a recycler who is verified and whose account is active.
+
+    Checked when the weighing is registered and again when it is validated, because the
+    recycler may have been rejected or deactivated in between (validating creates a purchase
+    that is owed to them).
+    """
+    if (
+        recycler is None
+        or not recycler.is_active
+        or recycler.verification_status != VerificationStatus.verified
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El reciclador no está verificado o su cuenta está desactivada",
+        )
 
 
 def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) -> Weighing:
@@ -21,6 +41,7 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Solo se pueden validar pesajes en estado 'pending_validation'. Estado actual: {weighing.status}",
         )
+    ensure_recycler_can_deliver(weighing.recycler)
 
     weighing.status        = WeighingStatus.validated
     weighing.validated_by  = validator_id
