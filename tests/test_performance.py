@@ -21,7 +21,7 @@ from app.domains.transactions.models import (
 from app.domains.weighings.models import Weighing, WeighingStatus
 from tests import factories
 
-MATERIALS = ["papel", "plastico", "vidrio", "metal", "carton", "electronico", "organico"]
+MATERIALS = ["paper", "plastic", "glass", "metal", "cardboard", "electronic", "organic"]
 
 
 @contextmanager
@@ -41,17 +41,17 @@ def _orm_loads(*models):
             event.remove(model, "load", on_load)
 
 
-def _add_weighings(db, warehouse, recycler, count, material="plastico", kg="10", **extra):
+def _add_weighings(db, warehouse, recycler, count, material="plastic", kg="10", **extra):
     rows = [Weighing(recycler_id=recycler.id, material_code=material, warehouse_id=warehouse.id,
-                     kg=Decimal(kg), precio_kg=Decimal("100"), **extra) for _ in range(count)]
+                     kg=Decimal(kg), price_per_kg=Decimal("100"), **extra) for _ in range(count)]
     db.add_all(rows)
     db.commit()
     return rows
 
 
 def _add_sales(db, warehouse, admin, count, **extra):
-    rows = [Transaction(type=TransactionType.venta, material_code="plastico", warehouse_id=warehouse.id,
-                        kg=Decimal("2"), precio_kg=Decimal("100"), created_by=admin.id, **extra)
+    rows = [Transaction(type=TransactionType.sale, material_code="plastic", warehouse_id=warehouse.id,
+                        kg=Decimal("2"), price_per_kg=Decimal("100"), created_by=admin.id, **extra)
             for _ in range(count)]
     db.add_all(rows)
     db.commit()
@@ -69,7 +69,7 @@ def _varied_weighings(db, count):
             recycler_id=factories.make_user(db, "recycler").id,
             material_code=MATERIALS[i % len(MATERIALS)],
             warehouse_id=warehouses[i % len(warehouses)].id,
-            kg=Decimal("10"), precio_kg=Decimal("100"))
+            kg=Decimal("10"), price_per_kg=Decimal("100"))
         for i in range(count)
     ]
     db.add_all(rows)
@@ -80,11 +80,11 @@ def _varied_sales(db, admin_id, count):
     warehouses = db.query(Warehouse).order_by(Warehouse.name).all()
     rows = [
         Transaction(
-            type=TransactionType.compra if i % 2 else TransactionType.venta,
+            type=TransactionType.purchase if i % 2 else TransactionType.sale,
             material_code=MATERIALS[i % len(MATERIALS)],
             warehouse_id=warehouses[i % len(warehouses)].id,
             recycler_id=factories.make_user(db, "recycler").id if i % 2 else None,
-            kg=Decimal("2"), precio_kg=Decimal("100"), created_by=admin_id)
+            kg=Decimal("2"), price_per_kg=Decimal("100"), created_by=admin_id)
         for i in range(count)
     ]
     db.add_all(rows)
@@ -127,13 +127,13 @@ class TestNoNPlusOne:
 
     def test_inventory_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
-        factories.stock(db, db.query(Warehouse).order_by(Warehouse.name).first(), "papel")
+        factories.stock(db, db.query(Warehouse).order_by(Warehouse.name).first(), "paper")
         few, _ = _queries_for(c, "/inventory", db, count_queries)
 
         warehouses = db.query(Warehouse).order_by(Warehouse.name).all()  # re-read after the reset
         for warehouse in warehouses:
             for material in MATERIALS:
-                if (warehouse.name, material) != (warehouses[0].name, "papel"):
+                if (warehouse.name, material) != (warehouses[0].name, "paper"):
                     factories.stock(db, warehouse, material)
         many, body = _queries_for(c, "/inventory", db, count_queries)
 
@@ -162,12 +162,12 @@ class TestAggregatesInSql:
             assert len(statements) <= bound, (url, statements)
 
     def test_weighing_stats_values(self, client_as, eca_admin, db, warehouse, recycler):
-        _add_weighings(db, warehouse, recycler, 2, material="plastico", kg="10.5")
-        _add_weighings(db, warehouse, recycler, 1, material="vidrio", kg="4")
-        _add_weighings(db, warehouse, recycler, 1, material="vidrio", kg="9",
-                       estado=WeighingStatus.validado)
+        _add_weighings(db, warehouse, recycler, 2, material="plastic", kg="10.5")
+        _add_weighings(db, warehouse, recycler, 1, material="glass", kg="4")
+        _add_weighings(db, warehouse, recycler, 1, material="glass", kg="9",
+                       status=WeighingStatus.validated)
         old = _add_weighings(db, warehouse, recycler, 1, material="metal", kg="99")[0]
-        old.fecha = datetime.now(timezone.utc) - timedelta(days=90)  # outside the current month
+        old.occurred_at = datetime.now(timezone.utc) - timedelta(days=90)  # outside the current month
         db.commit()
 
         body = client_as(eca_admin).get("/weighings/stats").json()
@@ -175,7 +175,7 @@ class TestAggregatesInSql:
         assert Decimal(body["total_kg_month"]) == Decimal("34")
         assert body["pending_count"] == 4  # everything pending, including the old one, minus validated
         by_material = {m["material"]: m["kg"] for m in body["by_material"]}
-        assert by_material == {"plastico": 21.0, "vidrio": 13.0}
+        assert by_material == {"plastic": 21.0, "glass": 13.0}
 
     def test_weighing_stats_when_empty(self, client_as, eca_admin):
         body = client_as(eca_admin).get("/weighings/stats").json()
@@ -184,28 +184,28 @@ class TestAggregatesInSql:
 
     def test_transaction_stats_values(self, client_as, eca_admin, db, warehouse, recycler):
         _add_sales(db, warehouse, eca_admin, 2)  # 2 kg @ 100 each
-        db.add(Transaction(type=TransactionType.compra, material_code="plastico",
-                           warehouse_id=warehouse.id, kg=Decimal("30"), precio_kg=Decimal("50"),
+        db.add(Transaction(type=TransactionType.purchase, material_code="plastic",
+                           warehouse_id=warehouse.id, kg=Decimal("30"), price_per_kg=Decimal("50"),
                            recycler_id=recycler.id, created_by=eca_admin.id,
-                           status=TransactionStatus.pagado))
+                           status=TransactionStatus.paid))
         db.commit()
 
         body = client_as(eca_admin).get("/transactions/stats").json()
-        assert (body["total_ventas_month"], body["total_compras_month"]) == (2, 1)
-        assert Decimal(body["total_kg_ventas"]) == Decimal("4")
-        assert Decimal(body["total_value_ventas"]) == Decimal("400")
-        assert Decimal(body["total_kg_compras"]) == Decimal("30")
-        assert Decimal(body["total_value_compras"]) == Decimal("1500")
+        assert (body["total_sales_month"], body["total_purchases_month"]) == (2, 1)
+        assert Decimal(body["total_kg_sales"]) == Decimal("4")
+        assert Decimal(body["total_value_sales"]) == Decimal("400")
+        assert Decimal(body["total_kg_purchases"]) == Decimal("30")
+        assert Decimal(body["total_value_purchases"]) == Decimal("1500")
         assert body["pending_count"] == 2
 
     def test_transaction_stats_when_empty(self, client_as, eca_admin):
         body = client_as(eca_admin).get("/transactions/stats").json()
-        assert body["total_ventas_month"] == 0 and Decimal(body["total_value_compras"]) == 0
+        assert body["total_sales_month"] == 0 and Decimal(body["total_value_purchases"]) == 0
 
     def test_inventory_stats_values(self, client_as, eca_admin, db, warehouse):
-        factories.stock(db, warehouse, "papel", kg="100", precio_kg="10")    # disponible
-        factories.stock(db, warehouse, "vidrio", kg="10", precio_kg="20")    # bajo_stock (min 50)
-        factories.stock(db, warehouse, "metal", kg="0", precio_kg="30")      # agotado
+        factories.stock(db, warehouse, "paper", kg="100", price_per_kg="10")    # available
+        factories.stock(db, warehouse, "glass", kg="10", price_per_kg="20")    # low_stock (min 50)
+        factories.stock(db, warehouse, "metal", kg="0", price_per_kg="30")      # out_of_stock
 
         body = client_as(eca_admin).get("/inventory/stats").json()
         assert Decimal(body["total_stock_kg"]) == Decimal("110")
@@ -220,20 +220,20 @@ class TestAggregatesInSql:
 class TestInventoryListInSql:
     @pytest.fixture
     def three_states(self, db, warehouse):
-        factories.stock(db, warehouse, "papel", kg="100")   # disponible
-        factories.stock(db, warehouse, "vidrio", kg="10")   # bajo_stock
-        factories.stock(db, warehouse, "metal", kg="0")     # agotado
+        factories.stock(db, warehouse, "paper", kg="100")   # available
+        factories.stock(db, warehouse, "glass", kg="10")   # low_stock
+        factories.stock(db, warehouse, "metal", kg="0")     # out_of_stock
 
-    @pytest.mark.parametrize("estado,expected", [
-        ("disponible", ["papel"]), ("bajo_stock", ["vidrio"]), ("agotado", ["metal"]),
+    @pytest.mark.parametrize("status,expected", [
+        ("available", ["paper"]), ("low_stock", ["glass"]), ("out_of_stock", ["metal"]),
     ])
-    def test_filter_by_estado(self, client_as, eca_admin, three_states, estado, expected):
-        body = client_as(eca_admin).get(f"/inventory?estado={estado}").json()
+    def test_filter_by_status(self, client_as, eca_admin, three_states, status, expected):
+        body = client_as(eca_admin).get(f"/inventory?status={status}").json()
         assert [i["material_code"] for i in body["items"]] == expected
         assert body["total"] == 1
 
-    def test_unknown_estado_matches_nothing(self, client_as, eca_admin, three_states):
-        body = client_as(eca_admin).get("/inventory?estado=inventado").json()
+    def test_unknown_status_matches_nothing(self, client_as, eca_admin, three_states):
+        body = client_as(eca_admin).get("/inventory?status=inventado").json()
         assert body == {"total": 0, "items": []}
 
     def test_pagination_is_stable_and_total_is_the_full_count(self, client_as, eca_admin, db, warehouse):
@@ -246,18 +246,18 @@ class TestInventoryListInSql:
         seen = [i["material_code"] for p in pages for i in p["items"]]
         assert seen == sorted(MATERIALS) and len(set(seen)) == 7
 
-    def test_estado_is_still_exposed_on_each_item(self, client_as, eca_admin, three_states):
+    def test_status_is_still_exposed_on_each_item(self, client_as, eca_admin, three_states):
         items = client_as(eca_admin).get("/inventory").json()["items"]
-        assert {i["material_code"]: i["estado"] for i in items} == {
-            "papel": "disponible", "vidrio": "bajo_stock", "metal": "agotado"}
+        assert {i["material_code"]: i["status"] for i in items} == {
+            "paper": "available", "glass": "low_stock", "metal": "out_of_stock"}
 
-    def test_the_estado_rule_matches_between_python_and_sql(self, db, warehouse):
+    def test_the_status_rule_matches_between_python_and_sql(self, db, warehouse):
         rows = [factories.stock(db, warehouse, m, kg=k) for m, k in
-                (("papel", "0"), ("vidrio", "49.99"), ("metal", "50"), ("carton", "500"))]
+                (("paper", "0"), ("glass", "49.99"), ("metal", "50"), ("cardboard", "500"))]
         db.expire_all()
-        for state in ("agotado", "bajo_stock", "disponible"):
-            in_sql = {r.id for r in db.query(InventoryItem).filter(InventoryItem.estado == state)}
-            in_python = {r.id for r in db.query(InventoryItem) if r.estado == state}
+        for state in ("out_of_stock", "low_stock", "available"):
+            in_sql = {r.id for r in db.query(InventoryItem).filter(InventoryItem.status == state)}
+            in_python = {r.id for r in db.query(InventoryItem) if r.status == state}
             assert in_sql == in_python
         assert rows  # silence "unused" while documenting the boundary values above
 
@@ -270,10 +270,10 @@ def _indexes(db, table):
 
 class TestIndexes:
     @pytest.mark.parametrize("table,name,columns", [
-        ("weighings", "ix_weighings_recycler_estado_fecha", ["recycler_id", "estado", "fecha"]),
-        ("weighings", "idx_weighings_fecha", ["fecha"]),
-        ("transactions", "ix_transactions_type_status_fecha", ["type", "status", "fecha"]),
-        ("transactions", "ix_transactions_fecha", ["fecha"]),
+        ("weighings", "ix_weighings_recycler_status_occurred", ["recycler_id", "status", "occurred_at"]),
+        ("weighings", "idx_weighings_occurred_at", ["occurred_at"]),
+        ("transactions", "ix_transactions_type_status_occurred", ["type", "status", "occurred_at"]),
+        ("transactions", "ix_transactions_occurred_at", ["occurred_at"]),
         ("users", "ix_users_user_type_verification", ["user_type_code", "verification_status"]),
     ])
     def test_expected_indexes_exist(self, db, table, name, columns):
@@ -291,10 +291,10 @@ class TestIndexes:
 
     @pytest.mark.parametrize("query,index", [
         ("SELECT * FROM weighings WHERE recycler_id = '00000000-0000-0000-0000-000000000000' "
-         "AND estado = 'pendiente' ORDER BY fecha DESC", "ix_weighings_recycler_estado_fecha"),
-        ("SELECT count(*) FROM weighings WHERE fecha >= now()", "idx_weighings_fecha"),
-        ("SELECT * FROM transactions WHERE type = 'venta' AND status = 'pendiente' "
-         "ORDER BY fecha DESC", "ix_transactions_type_status_fecha"),
+         "AND status = 'pending_validation' ORDER BY occurred_at DESC", "ix_weighings_recycler_status_occurred"),
+        ("SELECT count(*) FROM weighings WHERE occurred_at >= now()", "idx_weighings_occurred_at"),
+        ("SELECT * FROM transactions WHERE type = 'sale' AND status = 'pending' "
+         "ORDER BY occurred_at DESC", "ix_transactions_type_status_occurred"),
         ("SELECT * FROM users WHERE user_type_code = 'recycler' "
          "AND verification_status = 'pending'", "ix_users_user_type_verification"),
     ])

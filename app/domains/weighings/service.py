@@ -31,19 +31,19 @@ def ensure_recycler_can_deliver(recycler: User | None) -> None:
 
 def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) -> Weighing:
     """
-    Transitions a weighing to 'validado'.
+    Transitions a weighing to 'validated'.
     Side effects:
       - Adds stock to inventory_items for the material + warehouse.
-      - Creates a compra Transaction linked to this weighing.
+      - Creates a purchase Transaction linked to this weighing.
     """
-    if weighing.estado != WeighingStatus.pendiente:
+    if weighing.status != WeighingStatus.pending_validation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Solo se pueden validar pesajes en estado 'pendiente'. Estado actual: {weighing.estado}",
+            detail=f"Solo se pueden validar pesajes en estado 'pending_validation'. Estado actual: {weighing.status}",
         )
     ensure_recycler_can_deliver(weighing.recycler)
 
-    weighing.estado        = WeighingStatus.validado
+    weighing.status        = WeighingStatus.validated
     weighing.validated_by  = validator_id
     weighing.validated_at  = datetime.now(timezone.utc)
     weighing.updated_at    = datetime.now(timezone.utc)
@@ -54,34 +54,34 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
         material_code=weighing.material_code,
         warehouse_id=weighing.warehouse_id,
         kg=Decimal(str(weighing.kg)),
-        precio_kg=Decimal(str(weighing.precio_kg)),
+        price_per_kg=Decimal(str(weighing.price_per_kg)),
     )
 
-    # Side effect: create compra transaction (imported here to avoid circular imports at module load)
+    # Side effect: create purchase transaction (imported here to avoid circular imports at module load)
     from app.domains.transactions import service as tx_service
-    tx_service.create_compra_from_weighing(db=db, weighing=weighing, created_by=validator_id)
+    tx_service.create_purchase_from_weighing(db=db, weighing=weighing, created_by=validator_id)
 
     return weighing
 
 
 def reject_weighing(db: Session, weighing: Weighing, reason: str) -> Weighing:
-    if weighing.estado != WeighingStatus.pendiente:
+    if weighing.status != WeighingStatus.pending_validation:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden rechazar pesajes en estado 'pendiente'",
+            detail="Solo se pueden rechazar pesajes en estado 'pending_validation'",
         )
-    weighing.estado           = WeighingStatus.rechazado
+    weighing.status           = WeighingStatus.rejected
     weighing.rejection_reason = reason
     weighing.updated_at       = datetime.now(timezone.utc)
     return weighing
 
 
 def mark_paid(db: Session, weighing: Weighing) -> Weighing:
-    if weighing.estado != WeighingStatus.validado:
+    if weighing.status != WeighingStatus.validated:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Solo se pueden marcar como pagados pesajes en estado 'validado'",
+            detail="Solo se pueden marcar como pagados pesajes en estado 'validated'",
         )
-    weighing.estado     = WeighingStatus.pagado
+    weighing.status     = WeighingStatus.paid
     weighing.updated_at = datetime.now(timezone.utc)
     return weighing

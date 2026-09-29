@@ -27,7 +27,7 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 def list_inventory(
     material_code: str | None = Query(default=None),
     warehouse_id: uuid.UUID | None = Query(default=None),
-    estado: str | None = Query(default=None, description="disponible | bajo_stock | agotado"),
+    status_: str | None = Query(default=None, alias="status", description="available | low_stock | out_of_stock"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -40,8 +40,8 @@ def list_inventory(
     if warehouse_id:
         query = query.filter(InventoryItem.warehouse_id == warehouse_id)
 
-    if estado:
-        query = query.filter(InventoryItem.estado == estado)
+    if status_:
+        query = query.filter(InventoryItem.status == status_)
 
     total = query.count()
     items = (
@@ -62,20 +62,20 @@ def inventory_stats(
 ):
     total_stock, total_value = db.query(
         func.coalesce(func.sum(InventoryItem.stock_kg), 0),
-        func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.precio_kg), 0),
+        func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.price_per_kg), 0),
     ).one()
-    by_estado: dict[str, int] = {
-        estado: count
-        for estado, count in db.query(InventoryItem.estado, func.count(InventoryItem.id))
-        .group_by(InventoryItem.estado)
+    by_status: dict[str, int] = {
+        status: count
+        for status, count in db.query(InventoryItem.status, func.count(InventoryItem.id))
+        .group_by(InventoryItem.status)
         .all()
     }
     return InventoryStatsResponse(
         total_stock_kg=total_stock,
         total_value=total_value,
-        available_count=by_estado.get("disponible", 0),
-        low_stock_count=by_estado.get("bajo_stock", 0),
-        out_of_stock_count=by_estado.get("agotado", 0),
+        available_count=by_status.get("available", 0),
+        low_stock_count=by_status.get("low_stock", 0),
+        out_of_stock_count=by_status.get("out_of_stock", 0),
     )
 
 
@@ -122,9 +122,9 @@ def update_inventory_item(
     if request.stock_min_kg is not None:
         changes["stock_min_kg"] = [str(item.stock_min_kg), str(request.stock_min_kg)]
         item.stock_min_kg = request.stock_min_kg
-    if request.precio_kg is not None:
-        changes["precio_kg"] = [str(item.precio_kg), str(request.precio_kg)]
-        item.precio_kg = request.precio_kg
+    if request.price_per_kg is not None:
+        changes["price_per_kg"] = [str(item.price_per_kg), str(request.price_per_kg)]
+        item.price_per_kg = request.price_per_kg
 
     if changes:
         audit.record(db, Action.INVENTORY_UPDATED, actor=actor, target_type="inventory_item",

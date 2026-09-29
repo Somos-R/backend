@@ -361,8 +361,8 @@ class TestUserEvents:
 
 def _weighing(client, recycler, warehouse):
     return client.post("/weighings", json={
-        "recycler_id": str(recycler.id), "material_code": "plastico",
-        "warehouse_id": str(warehouse.id), "kg": "12.5", "precio_kg": "400"}).json()
+        "recycler_id": str(recycler.id), "material_code": "plastic",
+        "warehouse_id": str(warehouse.id), "kg": "12.5", "price_per_kg": "400"}).json()
 
 
 class TestBusinessEvents:
@@ -373,59 +373,59 @@ class TestBusinessEvents:
         assert created.actor_id == eca_admin.id and created.target_id == w["id"]
         assert created.details["kg"] == "12.50" or created.details["kg"] == "12.5"
 
-        c.patch(f"/weighings/{w['id']}/status", json={"status": "validado"})
-        c.patch(f"/weighings/{w['id']}/status", json={"status": "pagado"})
-        assert only(db, Action.WEIGHING_VALIDATED).details["from"] == "pendiente"
-        assert only(db, Action.WEIGHING_PAID).details["from"] == "validado"
+        c.patch(f"/weighings/{w['id']}/status", json={"status": "validated"})
+        c.patch(f"/weighings/{w['id']}/status", json={"status": "paid"})
+        assert only(db, Action.WEIGHING_VALIDATED).details["from"] == "pending_validation"
+        assert only(db, Action.WEIGHING_PAID).details["from"] == "validated"
 
     def test_rejection(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         w = _weighing(c, recycler, warehouse)
-        c.patch(f"/weighings/{w['id']}/status", json={"status": "rechazado", "rejection_reason": "sucio"})
+        c.patch(f"/weighings/{w['id']}/status", json={"status": "rejected", "rejection_reason": "sucio"})
         assert only(db, Action.WEIGHING_REJECTED).target_id == w["id"]
 
     def test_a_failed_transition_records_nothing(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         w = _weighing(c, recycler, warehouse)
-        c.patch(f"/weighings/{w['id']}/status", json={"status": "validado"})
-        again = c.patch(f"/weighings/{w['id']}/status", json={"status": "validado"})
+        c.patch(f"/weighings/{w['id']}/status", json={"status": "validated"})
+        again = c.patch(f"/weighings/{w['id']}/status", json={"status": "validated"})
         assert again.status_code == 400
         assert len(rows(db, Action.WEIGHING_VALIDATED)) == 1
 
     def test_sale_lifecycle(self, client_as, eca_admin, warehouse, db):
         factories.stock(db, warehouse, kg="100")
         c = client_as(eca_admin)
-        body = {"material_code": "plastico", "warehouse_id": str(warehouse.id), "kg": "10", "precio_kg": "900"}
+        body = {"material_code": "plastic", "warehouse_id": str(warehouse.id), "kg": "10", "price_per_kg": "900"}
         first = c.post("/transactions", json=body).json()
         second = c.post("/transactions", json=body).json()
-        c.patch(f"/transactions/{first['id']}/status", json={"status": "cancelado"})
-        c.patch(f"/transactions/{second['id']}/status", json={"status": "entregado"})
+        c.patch(f"/transactions/{first['id']}/status", json={"status": "cancelled"})
+        c.patch(f"/transactions/{second['id']}/status", json={"status": "delivered"})
 
         assert len(rows(db, Action.TRANSACTION_CREATED)) == 2
         assert only(db, Action.TRANSACTION_CANCELLED).target_id == first["id"]
         delivered = only(db, Action.TRANSACTION_DELIVERED)
-        assert delivered.details["from"] == "pendiente" and delivered.details["type"] == "venta"
+        assert delivered.details["from"] == "pending" and delivered.details["type"] == "sale"
 
     def test_paying_a_purchase(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         w = _weighing(c, recycler, warehouse)
-        c.patch(f"/weighings/{w['id']}/status", json={"status": "validado"})
-        purchase = c.get("/transactions?type=compra").json()["items"][0]
-        c.patch(f"/transactions/{purchase['id']}/status", json={"status": "pagado"})
-        assert only(db, Action.TRANSACTION_PAID).details["type"] == "compra"
+        c.patch(f"/weighings/{w['id']}/status", json={"status": "validated"})
+        purchase = c.get("/transactions?type=purchase").json()["items"][0]
+        c.patch(f"/transactions/{purchase['id']}/status", json={"status": "paid"})
+        assert only(db, Action.TRANSACTION_PAID).details["type"] == "purchase"
 
     def test_a_refused_sale_records_nothing(self, client_as, eca_admin, warehouse, db):
         factories.stock(db, warehouse, kg="5")
         r = client_as(eca_admin).post("/transactions", json={
-            "material_code": "plastico", "warehouse_id": str(warehouse.id), "kg": "50", "precio_kg": "900"})
+            "material_code": "plastic", "warehouse_id": str(warehouse.id), "kg": "50", "price_per_kg": "900"})
         assert r.status_code == 400 and rows(db, Action.TRANSACTION_CREATED) == []
 
     def test_inventory_changes_record_old_and_new_values(self, client_as, eca_admin, warehouse, db):
-        item = factories.stock(db, warehouse, kg="100", precio_kg="500")
-        client_as(eca_admin).patch(f"/inventory/{item.id}", json={"precio_kg": "750", "stock_min_kg": "20"})
+        item = factories.stock(db, warehouse, kg="100", price_per_kg="500")
+        client_as(eca_admin).patch(f"/inventory/{item.id}", json={"price_per_kg": "750", "stock_min_kg": "20"})
         entry = only(db, Action.INVENTORY_UPDATED)
-        assert entry.details["changes"] == {"precio_kg": ["500.00", "750"], "stock_min_kg": ["50.00", "20"]}
-        assert entry.details["material"] == "plastico"
+        assert entry.details["changes"] == {"price_per_kg": ["500.00", "750"], "stock_min_kg": ["50.00", "20"]}
+        assert entry.details["material"] == "plastic"
 
     def test_an_inventory_patch_that_changes_nothing_records_nothing(self, client_as, eca_admin, warehouse, db):
         item = factories.stock(db, warehouse)
@@ -434,8 +434,8 @@ class TestBusinessEvents:
 
     def test_every_entry_carries_the_request_id_of_its_response(self, client_as, eca_admin, recycler, warehouse, db):
         r = client_as(eca_admin).post("/weighings", json={
-            "recycler_id": str(recycler.id), "material_code": "plastico",
-            "warehouse_id": str(warehouse.id), "kg": "1", "precio_kg": "1"})
+            "recycler_id": str(recycler.id), "material_code": "plastic",
+            "warehouse_id": str(warehouse.id), "kg": "1", "price_per_kg": "1"})
         assert only(db, Action.WEIGHING_CREATED).request_id == r.headers["x-request-id"]
 
     def test_reads_are_not_audited(self, client_as, eca_admin, db):
