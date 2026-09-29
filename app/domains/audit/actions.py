@@ -15,6 +15,7 @@ class Action:
     PASSWORD_RESET = "password.reset"
     PASSWORD_CHANGED = "password.changed"
     PASSWORD_CHANGE_FAILED = "password.change_failed"
+    PLATFORM_ADMIN_CREATED = "platform_admin.created"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"

@@ -26,6 +26,7 @@ _TYPE_DEFAULTS: dict[str, dict] = {
     "eca": {},
     "association": {"association_nit": "900123456-7", "legal_representative": "Rep Test"},
     "b2b_client": {"company_name": "Empresa Test", "tax_id": None},
+    "platform": {},
 }
 
 

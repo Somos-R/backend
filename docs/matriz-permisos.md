@@ -14,6 +14,7 @@ Origen: *Documento Técnico de Plataforma* (roles de Asociación y ECA) y los en
 | `eca` | `eca_admin` | ECA · Administrativo |
 | `eca` | `eca_operator` | ECA · Operador de báscula |
 | `eca` | `eca_warehouse` | ECA · Encargado de bodega |
+| `platform` | `platform_admin` | Administrador de Somos R (ver «Somos R» más abajo) |
 | `recycler` | — | Reciclador |
 | `citizen`, `building` | — | Ciudadano / Conjunto-JAC |
 | `b2b_client` | — | Empresa obligada REP |
@@ -58,6 +59,15 @@ Notas de comportamiento:
 
 - Un reciclador que consulta el pesaje de otro recibe **404** (no 403), para no revelar que existe. Al listar solo ve los suyos; pedir `recycler_id` ajeno da 403.
 - `GET /users/{id}` sobre alguien fuera del alcance del rol da 403.
+
+## Somos R (`platform`)
+
+Somos R es un actor propio, separado de los clientes: tipo `platform`, rol `platform_admin` (las personas de Somos R, mismo acceso).
+
+- **Sin autoregistro.** `POST /auth/register` no admite el tipo `platform`, un administrador de ECA o asociación no puede asignar el rol (422) y `GET /catalogs/roles` no lo lista. La primera cuenta la crea un operador con `scripts/create_platform_admin.py`; las siguientes, otro `platform_admin` desde el backoffice.
+- **No entra por el login público.** `POST /auth/login` responde igual que ante una contraseña errónea, aunque las credenciales sean correctas (queda auditado con el motivo `platform_account`); las cuentas de Somos R entrarán por el backoffice, con segundo factor y audiencia de token propia. Tampoco se cuentan sus intentos fallidos (nadie puede bloquear a un administrador adivinando) ni se le ofrece recuperar la contraseña por un enlace público.
+- **Cero acceso a la API de los clientes:** todos los endpoints de esta matriz responden 403 a un `platform_admin`.
+- **Permisos por capacidad, no por rol** (`PLATFORM_CAPABILITIES` en `app/core/permissions.py`, dependencia `require_capability`): `organizations.review`, `users.manage`, `catalogs.manage`, `audit.read`. Hoy las tiene todas `platform_admin`; si mañana se separan funciones, se reparten capacidades entre roles nuevos sin tocar los endpoints. Todavía no se anuncian en `GET /auth/me`: una capacidad solo se anuncia cuando un endpoint la exige.
 
 ## Capacidades (`GET /auth/me`)
 

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.errors import ApiError
-from app.core.permissions import ensure_role
+from app.core.permissions import ensure_capability, ensure_role
 
 bearer_scheme = HTTPBearer()
 optional_bearer_scheme = HTTPBearer(auto_error=False)
@@ -121,6 +121,16 @@ def get_optional_user(
     user = _user_from_token(credentials.credentials, db)
     _identify(request, user)
     return user
+
+
+def require_capability(capability: str):
+    """Dependency factory for backoffice endpoints: 403 unless the caller's platform role carries `capability`."""
+
+    def dependency(user=Depends(get_current_user)):
+        ensure_capability(user, capability)
+        return user
+
+    return dependency
 
 
 def require_roles(*roles: str):

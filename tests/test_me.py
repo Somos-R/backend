@@ -26,6 +26,8 @@ EXPECTED = {
         "recyclers.view", "recyclers.verify", "weighings.view", "weighings.review", "inventory.view",
     },
     "route_manager": {"recyclers.view"},
+    # Somos R's capabilities are not announced until a backoffice endpoint enforces them.
+    "platform_admin": set(),
 }
 
 
