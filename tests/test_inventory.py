@@ -80,3 +80,12 @@ class TestItem:
     def test_patch_not_found(self, client_as, eca_admin):
         r = client_as(eca_admin).patch(f"/inventory/{MISSING_ID}", json={"price_per_kg": "1"})
         assert r.status_code == 404
+
+
+def test_the_old_spanish_status_and_material_codes_are_gone(client_as, eca_admin, db, warehouse):
+    factories.stock(db, warehouse, "plastic", kg="100")
+    c = client_as(eca_admin)
+    assert c.get("/inventory?status=disponible").json()["items"] == []
+    assert c.get("/inventory?material_code=plastico").json()["items"] == []
+    codes = {m["code"] for m in c.get("/inventory/materials").json()}
+    assert codes == {"paper", "plastic", "glass", "metal", "cardboard", "electronic", "organic"}

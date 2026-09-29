@@ -75,6 +75,12 @@ class TestReadEndpoints:
         assert c.get("/transactions?status=pending").json()["total"] == 2
         assert c.get("/transactions?material_code=glass").json()["total"] == 0
 
+    def test_the_old_spanish_filters_are_gone(self, client_as, eca_admin):
+        c = client_as(eca_admin)
+        assert c.get("/transactions?type=venta").status_code == 422
+        assert c.get("/transactions?type=compra").status_code == 422
+        assert c.get("/transactions?status=pendiente").status_code == 422
+
     def test_get_one(self, client_as, eca_admin, db, warehouse):
         c = client_as(eca_admin)
         factories.stock(db, warehouse)

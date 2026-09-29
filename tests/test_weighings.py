@@ -72,6 +72,22 @@ class TestReadEndpoints:
         other = factories.make_user(db, "recycler")
         assert c.get(f"/weighings?recycler_id={other.id}").json()["total"] == 0
 
+    def test_filter_by_status_uses_the_new_codes(self, client_as, eca_admin, recycler, warehouse):
+        c = client_as(eca_admin)
+        first = _create(c, recycler, warehouse)
+        _create(c, recycler, warehouse)
+        c.patch(f"/weighings/{first['id']}/status", json={"status": "validated"})
+        assert c.get("/weighings?status=validated").json()["total"] == 1
+        assert c.get("/weighings?status=pending_validation").json()["total"] == 1
+
+    def test_an_unknown_status_filter_is_a_422_not_a_500(self, client_as, eca_admin):
+        assert client_as(eca_admin).get("/weighings?status=inventado").status_code == 422
+
+    def test_the_old_spanish_status_values_are_gone(self, client_as, eca_admin):
+        c = client_as(eca_admin)
+        for old in ("pendiente", "validado", "rechazado", "pagado"):
+            assert c.get(f"/weighings?status={old}").status_code == 422
+
     def test_get_one(self, client_as, eca_admin, recycler, warehouse):
         c = client_as(eca_admin)
         created = _create(c, recycler, warehouse)

@@ -27,7 +27,7 @@ router = APIRouter(prefix="/inventory", tags=["inventory"])
 def list_inventory(
     material_code: str | None = Query(default=None),
     warehouse_id: uuid.UUID | None = Query(default=None),
-    status: str | None = Query(default=None, description="available | low_stock | out_of_stock"),
+    status_: str | None = Query(default=None, alias="status", description="available | low_stock | out_of_stock"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -40,8 +40,8 @@ def list_inventory(
     if warehouse_id:
         query = query.filter(InventoryItem.warehouse_id == warehouse_id)
 
-    if status:
-        query = query.filter(InventoryItem.status == status)
+    if status_:
+        query = query.filter(InventoryItem.status == status_)
 
     total = query.count()
     items = (

@@ -44,7 +44,7 @@ def list_weighings(
     recycler_id:   uuid.UUID | None = Query(default=None),
     material_code: str | None       = Query(default=None),
     warehouse_id:  uuid.UUID | None = Query(default=None),
-    status:        str | None       = Query(default=None),
+    status_:       WeighingStatus | None = Query(default=None, alias="status"),
     limit:         int              = Query(default=20, ge=1, le=100),
     offset:        int              = Query(default=0, ge=0),
     db:            Session          = Depends(get_db),
@@ -63,8 +63,8 @@ def list_weighings(
         query = query.filter(Weighing.material_code == material_code)
     if warehouse_id:
         query = query.filter(Weighing.warehouse_id == warehouse_id)
-    if status:
-        query = query.filter(Weighing.status == status)
+    if status_:
+        query = query.filter(Weighing.status == status_)
 
     total    = query.count()
     weighings = (
