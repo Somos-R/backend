@@ -241,11 +241,59 @@ docker compose exec app poetry run pytest tests/test_users.py
 
 ### Rebuild de la imagen
 
-Solo es necesario cuando cambias dependencias en `pyproject.toml`:
+Hay que reconstruir la imagen **cada vez que cambian las dependencias** (`pyproject.toml` o `poetry.lock`), y eso incluye lo que trae un `git pull` o un PR mergeado:
 
 ```bash
-docker compose up --build -d
+docker compose up -d --build
 ```
+
+Solo el servicio de la app, sin recrear la base de datos:
+
+```bash
+docker compose up -d --build --no-deps app
+```
+
+El código se actualiza solo porque está montado como volumen (`.:/app`), pero las librerías viven **dentro de la imagen**. Si la imagen quedó vieja, el contenedor sigue "Up" y aun así la API no responde (ver la sección siguiente).
+
+---
+
+## Solución de problemas
+
+### `localhost:8000` (o `/docs`) no responde, aunque el contenedor aparece "Up"
+
+Es lo más frecuente tras traer cambios. Mira primero el log del backend, ahí siempre queda el error real:
+
+```bash
+docker compose logs --tail 30 app
+```
+
+| Lo que ves en el log | Causa | Solución |
+|---|---|---|
+| `ModuleNotFoundError: No module named '...'` | La imagen quedó vieja: alguien agregó una dependencia y la imagen no se reconstruyó. El contenedor sigue "Up" porque `--reload` lo mantiene vivo esperando cambios | `docker compose up -d --build --no-deps app` |
+| `psycopg2.errors.UndefinedColumn`, `relation "..." does not exist` o errores 500 en login/registro | La base de datos está en una migración anterior a la del código | `docker compose exec app poetry run alembic upgrade head` |
+| `ValidationError` de `Settings` al arrancar | Falta una variable en `.env.local` o `SECRET_KEY` no cumple la validación (solo se exige fuera de `dev`) | Compara tu `.env.local` con `.env.example` |
+| `connection refused` / `could not connect to server` | Postgres no está sano todavía o no está levantado | `docker compose ps` y `docker compose up -d postgres` |
+| Nada en el log y el puerto no responde | Otro proceso usa el puerto 8000 | `docker compose down` y revisa qué usa el puerto |
+
+Para saber si la base está al día con el código:
+
+```bash
+docker compose exec app poetry run alembic current   # debe decir "(head)"
+```
+
+### Los contenedores de Postgres/pgAdmin siguen expuestos a toda la red
+
+Desde la Fase 4 los puertos se publican solo en `127.0.0.1`, pero un contenedor que ya existía conserva la configuración con la que se creó. Para aplicar la nueva:
+
+```bash
+docker compose up -d postgres
+```
+
+Los datos **no se pierden** (viven en el volumen `postgres_data`); la base se reinicia unos segundos. pgAdmin ya no arranca por defecto: `docker compose --profile tools up -d`.
+
+### Cambié `POSTGRES_PASSWORD` en el `.env` y la app no conecta
+
+Postgres fija su contraseña al crear el volumen la primera vez, así que cambiar la variable después no la cambia. Opciones: volver al valor anterior, cambiarla dentro de la base (`ALTER USER postgres PASSWORD '...'`) o recrear el volumen con `docker compose down -v` (**borra todos los datos**).
 
 ---
 
