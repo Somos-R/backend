@@ -253,7 +253,7 @@ Solo el servicio de la app, sin recrear la base de datos:
 docker compose up -d --build --no-deps app
 ```
 
-El código se actualiza solo porque está montado como volumen (`.:/app`), pero las librerías viven **dentro de la imagen**. Si la imagen quedó vieja, el contenedor sigue "Up" y aun así la API no responde (ver la sección siguiente).
+El código se actualiza solo porque está montado como volumen (`.:/app`), pero las librerías viven **dentro de la imagen**. Para el día a día basta con `docker compose restart app`: al arrancar, el contenedor instala las dependencias que falten. Reconstruir la imagen sigue siendo lo correcto cuando cambia el `Dockerfile` o para dejarla al día. Si la imagen quedó vieja, el contenedor sigue "Up" y aun así la API no responde (ver la sección siguiente).
 
 ---
 
@@ -269,7 +269,7 @@ docker compose logs --tail 30 app
 
 | Lo que ves en el log | Causa | Solución |
 |---|---|---|
-| `ModuleNotFoundError: No module named '...'` | La imagen quedó vieja: alguien agregó una dependencia y la imagen no se reconstruyó. El contenedor sigue "Up" porque `--reload` lo mantiene vivo esperando cambios | `docker compose up -d --build --no-deps app` |
+| `ModuleNotFoundError: No module named '...'` | Alguien agregó una dependencia y tu contenedor no la tiene. El contenedor sigue "Up" porque `--reload` lo mantiene vivo esperando cambios | `docker compose restart app` (instala lo que falte). Si persiste: `docker compose up -d --build --no-deps app` |
 | `psycopg2.errors.UndefinedColumn`, `relation "..." does not exist` o errores 500 en login/registro | La base de datos está en una migración anterior a la del código | `docker compose exec app poetry run alembic upgrade head` |
 | `ValidationError` de `Settings` al arrancar | Falta una variable en `.env.local` o `SECRET_KEY` no cumple la validación (solo se exige fuera de `dev`) | Compara tu `.env.local` con `.env.example` |
 | `connection refused` / `could not connect to server` | Postgres no está sano todavía o no está levantado | `docker compose ps` y `docker compose up -d postgres` |
