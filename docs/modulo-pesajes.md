@@ -63,7 +63,7 @@ Validaciones:
 - El `warehouse_id` debe existir
 
 
-La misma regla se comprueba **otra vez al validar** (`validado`): un reciclador puede dejar de estar verificado o ser desactivado entre el registro y la validación, y validar genera una compra a su nombre. En ese caso la validación responde `400` y no mueve stock ni crea la compra. Rechazar un pesaje sigue permitido.
+La misma regla se comprueba **otra vez al validar** (`validated`): un reciclador puede dejar de estar verificado o ser desactivado entre el registro y la validación, y validar genera una compra a su nombre. En ese caso la validación responde `400` y no mueve stock ni crea la compra. Rechazar un pesaje sigue permitido.
 
 #### `GET /weighings/{id}`
 Obtiene un pesaje por UUID.

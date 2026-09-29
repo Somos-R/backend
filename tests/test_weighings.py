@@ -220,20 +220,20 @@ class TestVerifiedRecyclerRule:
         recycler.verification_status = VerificationStatus.rejected
         db.commit()
 
-        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validado"})
+        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validated"})
         assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
         # nothing moved: still pending, no stock, no purchase owed to the recycler
         db.expire_all()
-        assert db.get(Weighing, weighing["id"]).estado.value == "pendiente"
+        assert db.get(Weighing, weighing["id"]).status.value == "pending_validation"
         assert db.query(InventoryItem).count() == 0
-        assert c.get("/transactions?type=compra").json()["total"] == 0
+        assert c.get("/transactions?type=purchase").json()["total"] == 0
 
     def test_a_deactivated_recycler_blocks_the_validation_too(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         weighing = _create(c, recycler, warehouse)
         recycler.is_active = False
         db.commit()
-        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validado"})
+        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validated"})
         assert r.status_code == 400
 
     def test_a_weighing_can_still_be_rejected_after_the_recycler_lost_verification(
@@ -244,5 +244,5 @@ class TestVerifiedRecyclerRule:
         recycler.verification_status = VerificationStatus.rejected
         db.commit()
         r = c.patch(f"/weighings/{weighing['id']}/status",
-                    json={"status": "rechazado", "rejection_reason": "Reciclador sin verificar"})
-        assert r.status_code == 200 and r.json()["estado"] == "rechazado"
+                    json={"status": "rejected", "rejection_reason": "Reciclador sin verificar"})
+        assert r.status_code == 200 and r.json()["status"] == "rejected"
