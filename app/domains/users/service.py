@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,21 @@ from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 from app.domains.users.schemas import UpdateRecyclerStatusRequest, UpdateUserRequest
 
+MIN_SEARCH_LENGTH = 2
+_SEARCH_COLUMNS = (User.full_name, User.id_number, User.email)
+
+
+def _search_term(q: str | None) -> str | None:
+    """`%text%` for a case- and accent-insensitive "contains", or None when q is too short to use.
+
+    `%`, `_` and backslash in the input are escaped: they are characters to find, never wildcards.
+    """
+    text = (q or "").strip()
+    if len(text) < MIN_SEARCH_LENGTH:
+        return None
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
 
 def _user_not_found() -> ApiError:
     return ApiError("user_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
@@ -40,6 +55,7 @@ def list_users(
     user_type_code: str | None,
     role_code: str | None,
     verification_status: str | None,
+    q: str | None,
     limit: int,
     offset: int,
 ) -> tuple[int, list[User]]:
@@ -55,6 +71,11 @@ def list_users(
         query = query.where(User.role_code == role_code)
     if verification_status:
         query = query.where(User.verification_status == verification_status)
+    term = _search_term(q)
+    if term:
+        pattern = func.unaccent(term)
+        query = query.where(or_(*(
+            func.unaccent(column).ilike(pattern, escape="\\") for column in _SEARCH_COLUMNS)))
 
     return paginate(db, query, User.created_at.desc(), User.id, limit=limit, offset=offset)
 

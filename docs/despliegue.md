@@ -54,7 +54,7 @@ No usar `/health/ready` como criterio de reinicio: una caída de la base reinici
 
 ## 4. Base de datos
 
-Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade head` (automatizarlo en el deploy es la tarea 5.8). Las migraciones 0011 y 0012 fallan sin cambiar nada si ya hay datos que violen las restricciones nuevas.
+Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade head` (automatizarlo en el deploy es la tarea 5.8). Las migraciones 0011 y 0012 fallan sin cambiar nada si ya hay datos que violen las restricciones nuevas. La migración 0015 crea la extensión `unaccent` (búsqueda sin tildes en `GET /users?q=`); es una extensión de confianza, así que basta con ser el dueño de la base de datos. En un servicio administrado, comprobar que la ofrece.
 
 ## 4b. Registro de auditoría en producción
 

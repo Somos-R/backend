@@ -16,6 +16,7 @@ Requiere autenticación con **Bearer token**.
 - `user_type_code` — filtra por tipo de usuario (`citizen`, `building`, `recycler`, `eca`, `association`, `b2b_client`)
 - `role_code` — filtra por rol (ver `GET /catalogs/roles`)
 - `verification_status` — filtra recicladores por estado (`pending`, `verified`, `rejected`)
+- `q` — búsqueda por texto: contiene, sin distinguir mayúsculas ni tildes (`perez` encuentra `Pérez`), sobre `full_name`, `id_number` y `email`. Mínimo 2 caracteres (si es menor se ignora), máx. 100. Se combina con el resto de filtros y `total` refleja el filtro completo.
 
 **Paginación:**
 - `limit` — cantidad de registros por página (default: `20`, máx: `500`)

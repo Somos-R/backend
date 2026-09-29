@@ -30,13 +30,14 @@ def list_users(
     user_type_code: str | None = Query(default=None),
     role_code: str | None = Query(default=None),
     verification_status: str | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=20, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*USERS_DIRECTORY)),
 ):
     total, users = users_service.list_users(
-        db, actor, user_type_code, role_code, verification_status, limit, offset)
+        db, actor, user_type_code, role_code, verification_status, q, limit, offset)
     return UserListResponse(total=total, limit=limit, offset=offset, items=users)
 
 
