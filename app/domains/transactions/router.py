@@ -128,7 +128,8 @@ def update_status(
     # Paying a purchase moves money; cancelling/delivering moves stock.
     ensure_role(actor, PAYMENTS if request.status == TransactionStatus.pagado else TRANSACTIONS_WRITE)
 
-    tx = db.get(Transaction, transaction_id)
+    # FOR UPDATE: two concurrent cancels must not both restore the stock.
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).with_for_update().first()
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
 

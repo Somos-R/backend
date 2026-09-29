@@ -4,7 +4,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +38,12 @@ class TransactionStatus(str, enum.Enum):
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (
+        # A weighing produces at most one purchase (NULLs, i.e. sales, are not constrained).
+        UniqueConstraint("weighing_id", name="uq_transactions_weighing_id"),
+        CheckConstraint("kg > 0", name="ck_transactions_kg_positive"),
+        CheckConstraint("precio_kg > 0", name="ck_transactions_price_positive"),
+    )
 
     id:            Mapped[uuid.UUID]         = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     type:          Mapped[TransactionType]   = mapped_column(Enum(TransactionType), nullable=False)

@@ -4,7 +4,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +33,10 @@ class WeighingStatus(str, enum.Enum):
 
 class Weighing(Base):
     __tablename__ = "weighings"
+    __table_args__ = (
+        CheckConstraint("kg > 0", name="ck_weighings_kg_positive"),
+        CheckConstraint("precio_kg > 0", name="ck_weighings_price_positive"),
+    )
 
     id:               Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     recycler_id:      Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
