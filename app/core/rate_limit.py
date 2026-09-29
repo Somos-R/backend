@@ -41,6 +41,6 @@ def token_flow_limit() -> str:
 def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     return JSONResponse(
         status_code=429,
-        content={"detail": "Demasiadas solicitudes. Intenta de nuevo en unos minutos"},
+        content={"detail": "Demasiadas solicitudes. Intenta de nuevo en unos minutos", "code": "rate_limited"},
         headers={"Retry-After": "60"},
     )

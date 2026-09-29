@@ -1,9 +1,10 @@
 import uuid
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import ApiError
 from app.domains.inventory import service as inventory_service
 from app.domains.transactions.models import (
     Transaction,
@@ -78,7 +79,7 @@ def create_sale(
 
 def cancel_transaction(db: Session, transaction: Transaction) -> Transaction:
     if transaction.status != TransactionStatus.pending:
-        raise HTTPException(
+        raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Solo se pueden cancelar transacciones en estado 'pending'",
         )
@@ -97,7 +98,7 @@ def cancel_transaction(db: Session, transaction: Transaction) -> Transaction:
 
 def mark_delivered(db: Session, transaction: Transaction) -> Transaction:
     if transaction.type != TransactionType.sale or transaction.status != TransactionStatus.pending:
-        raise HTTPException(
+        raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Solo se pueden marcar como entregadas ventas en estado 'pending'",
         )

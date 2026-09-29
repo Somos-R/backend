@@ -2,11 +2,12 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import (
     PAYMENTS,
     TRANSACTIONS_READ,
@@ -114,9 +115,9 @@ def create_sale(
     current_user: User    = Depends(require_roles(*TRANSACTIONS_WRITE)),
 ):
     if not db.get(Material, request.material_code):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
     if not db.get(Warehouse, request.warehouse_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
 
     tx = tx_service.create_sale(
         db=db,
@@ -146,7 +147,7 @@ def get_transaction(
 ):
     tx = db.get(Transaction, transaction_id)
     if not tx:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
+        raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
     return tx
 
 
@@ -163,7 +164,7 @@ def update_status(
     # FOR UPDATE: two concurrent cancels must not both restore the stock.
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).with_for_update().first()
     if not tx:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
+        raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
 
     previous = tx.status.value
 
@@ -173,10 +174,10 @@ def update_status(
         tx_service.mark_delivered(db, tx)
     elif request.status == TransactionStatus.paid:
         if tx.type != TransactionType.purchase or tx.status != TransactionStatus.pending:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición no válida")
+            raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición no válida")
         tx.status = TransactionStatus.paid
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no soportada")
+        raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no soportada")
 
     audit.record(
         db,

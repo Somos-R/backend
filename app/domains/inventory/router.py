@@ -1,10 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
 from app.domains.audit import service as audit
@@ -103,7 +104,7 @@ def get_inventory_item(
 ):
     item = db.get(InventoryItem, item_id)
     if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
+        raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
     return item
 
 
@@ -116,7 +117,7 @@ def update_inventory_item(
 ):
     item = db.get(InventoryItem, item_id)
     if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
+        raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
 
     changes: dict[str, list[str]] = {}
     if request.stock_min_kg is not None:

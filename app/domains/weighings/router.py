@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import (
     PAYMENTS,
     WEIGHINGS_CREATE,
@@ -119,14 +120,14 @@ def create_weighing(
 ):
     recycler = db.get(User, request.recycler_id)
     if not recycler or recycler.user_type_code != "recycler":
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
+        raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
     weighing_service.ensure_recycler_can_deliver(recycler)
 
     if not db.get(Material, request.material_code):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
 
     if not db.get(Warehouse, request.warehouse_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
 
     weighing = Weighing(
         id=uuid.uuid4(),
@@ -155,7 +156,7 @@ def get_weighing(
     weighing = db.get(Weighing, weighing_id)
     # A recycler asking for someone else's weighing gets the same answer as for a missing one.
     if not weighing or (actor.user_type_code == "recycler" and weighing.recycler_id != actor.id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
+        raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
     return weighing
 
 
@@ -172,7 +173,7 @@ def update_weighing_status(
     # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
     weighing = db.query(Weighing).filter(Weighing.id == weighing_id).with_for_update().first()
     if not weighing:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
+        raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 
     previous = weighing.status.value
 
@@ -180,7 +181,7 @@ def update_weighing_status(
         weighing_service.validate_weighing(db, weighing, current_user.id)
     elif request.status == WeighingStatus.rejected:
         if not request.rejection_reason:
-            raise HTTPException(
+            raise ApiError("rejection_reason_required", 
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="rejection_reason es requerido al rechazar",
             )
@@ -188,7 +189,7 @@ def update_weighing_status(
     elif request.status == WeighingStatus.paid:
         weighing_service.mark_paid(db, weighing)
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de status no válida")
+        raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de status no válida")
 
     audit.record(
         db,

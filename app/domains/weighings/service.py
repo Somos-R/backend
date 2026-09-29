@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy.orm import Session
 
+from app.core.errors import ApiError
 from app.domains.inventory import service as inventory_service
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
@@ -23,7 +24,7 @@ def ensure_recycler_can_deliver(recycler: User | None) -> None:
         or not recycler.is_active
         or recycler.verification_status != VerificationStatus.verified
     ):
-        raise HTTPException(
+        raise ApiError("recycler_not_verified", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El reciclador no está verificado o su cuenta está desactivada",
         )
@@ -37,7 +38,7 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
       - Creates a purchase Transaction linked to this weighing.
     """
     if weighing.status != WeighingStatus.pending_validation:
-        raise HTTPException(
+        raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Solo se pueden validar pesajes en estado 'pending_validation'. Estado actual: {weighing.status}",
         )
@@ -66,7 +67,7 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
 
 def reject_weighing(db: Session, weighing: Weighing, reason: str) -> Weighing:
     if weighing.status != WeighingStatus.pending_validation:
-        raise HTTPException(
+        raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Solo se pueden rechazar pesajes en estado 'pending_validation'",
         )
@@ -78,7 +79,7 @@ def reject_weighing(db: Session, weighing: Weighing, reason: str) -> Weighing:
 
 def mark_paid(db: Session, weighing: Weighing) -> Weighing:
     if weighing.status != WeighingStatus.validated:
-        raise HTTPException(
+        raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Solo se pueden marcar como pagados pesajes en estado 'validated'",
         )

@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import (
     ORG_ADMINS,
     PRIVILEGED_USER_FIELDS,
@@ -51,7 +52,7 @@ def list_users(
 ):
     visible = visible_user_types(actor)
     if user_type_code and user_type_code not in visible:
-        raise forbidden("No puedes consultar usuarios de ese tipo")
+        raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
 
     query = db.query(User).filter(User.user_type_code.in_(visible))
 
@@ -80,9 +81,9 @@ def get_user(
 
     user = db.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+        raise ApiError("user_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     if not is_self and user.user_type_code not in visible_user_types(actor):
-        raise forbidden("No puedes consultar usuarios de ese tipo")
+        raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
     return user
 
 
@@ -96,9 +97,9 @@ def update_recycler_status(
 ):
     user = db.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+        raise ApiError("user_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
     if user.user_type_code != "recycler":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Este endpoint solo aplica para recicladores")
+        raise ApiError("not_a_recycler", status_code=status.HTTP_400_BAD_REQUEST, detail="Este endpoint solo aplica para recicladores")
 
     user.verification_status = request.status
 
@@ -143,17 +144,17 @@ def update_user(
 
     user = db.get(User, user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
+        raise ApiError("user_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
     if not is_self and user.user_type_code not in manageable_user_types(actor):
-        raise forbidden("No puedes editar usuarios de ese tipo")
+        raise forbidden("No puedes editar usuarios de ese tipo", "user_type_not_editable")
 
     privileged = request.model_fields_set & PRIVILEGED_USER_FIELDS
     if privileged:
         if not is_org_admin:
-            raise forbidden("Solo un administrador puede modificar roles y permisos")
+            raise forbidden("Solo un administrador puede modificar roles y permisos", "role_change_admin_only")
         if is_self:
-            raise forbidden("No puedes modificar tus propios roles ni permisos")
+            raise forbidden("No puedes modificar tus propios roles ni permisos", "cannot_change_own_role")
         if request.role_code is not None:
             ensure_can_assign_role(actor, request.role_code, user.user_type_code)
 
@@ -174,7 +175,7 @@ def update_user(
         db.refresh(user)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
+        raise ApiError("tax_id_already_registered", 
             status_code=status.HTTP_409_CONFLICT,
             detail="tax_id already registered",
         )

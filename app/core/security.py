@@ -4,13 +4,14 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import jwt
 import sentry_sdk
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import ensure_role
 
 bearer_scheme = HTTPBearer()
@@ -39,8 +40,9 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def _unauthorized(detail: str) -> HTTPException:
-    return HTTPException(
+def _unauthorized(code: str, detail: str) -> ApiError:
+    return ApiError(
+        code,
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=detail,
         headers={"WWW-Authenticate": "Bearer"},
@@ -57,7 +59,7 @@ def decode_access_token(token: str) -> dict:
             options={"require": REQUIRED_CLAIMS},
         )
     except jwt.InvalidTokenError:
-        raise _unauthorized("Token inválido o expirado")
+        raise _unauthorized("invalid_token", "Token inválido o expirado")
 
 
 def _user_from_token(token: str, db: Session):
@@ -69,7 +71,7 @@ def _user_from_token(token: str, db: Session):
     try:
         user_id = uuid.UUID(payload["sub"])
     except (ValueError, TypeError):
-        raise _unauthorized("Token inválido o expirado")
+        raise _unauthorized("invalid_token", "Token inválido o expirado")
     jti = payload["jti"]
 
     # One round trip: the user and, if present, the matching revocation row.
@@ -79,16 +81,16 @@ def _user_from_token(token: str, db: Session):
         .where(User.id == user_id)
     ).first()
     if row is None:
-        raise _unauthorized("Token inválido o expirado")
+        raise _unauthorized("invalid_token", "Token inválido o expirado")
 
     user, revoked_jti = row
     if revoked_jti is not None:
-        raise _unauthorized("La sesión ha sido cerrada")
+        raise _unauthorized("session_closed", "La sesión ha sido cerrada")
     if not user.is_active:
-        raise _unauthorized("La cuenta está desactivada")
+        raise _unauthorized("account_disabled", "La cuenta está desactivada")
     # Bumped on password change/reset: every access token issued before that stops working.
     if payload.get("tv", 0) != user.token_version:
-        raise _unauthorized("La sesión ya no es válida. Inicia sesión de nuevo")
+        raise _unauthorized("session_outdated", "La sesión ya no es válida. Inicia sesión de nuevo")
     return user
 
 
