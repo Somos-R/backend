@@ -41,66 +41,108 @@ def _add_sales(db, warehouse, admin, count, **extra):
 
 
 # --- N+1: list endpoints cost a constant number of queries -----------------------------------
+# The rows deliberately reference *different* recyclers, materials and warehouses: with lazy
+# loading each distinct one costs a query, so an N+1 shows up as a growing count.
+
+def _varied_weighings(db, count):
+    warehouses = db.query(Warehouse).order_by(Warehouse.name).all()
+    rows = [
+        Weighing(
+            recycler_id=factories.make_user(db, "recycler").id,
+            material_code=MATERIALS[i % len(MATERIALS)],
+            warehouse_id=warehouses[i % len(warehouses)].id,
+            kg=Decimal("10"), precio_kg=Decimal("100"))
+        for i in range(count)
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+def _varied_sales(db, admin_id, count):
+    warehouses = db.query(Warehouse).order_by(Warehouse.name).all()
+    rows = [
+        Transaction(
+            type=TransactionType.compra if i % 2 else TransactionType.venta,
+            material_code=MATERIALS[i % len(MATERIALS)],
+            warehouse_id=warehouses[i % len(warehouses)].id,
+            recycler_id=factories.make_user(db, "recycler").id if i % 2 else None,
+            kg=Decimal("2"), precio_kg=Decimal("100"), created_by=admin_id)
+        for i in range(count)
+    ]
+    db.add_all(rows)
+    db.commit()
+
+
+def _queries_for(c, url, db, count_queries):
+    db.expunge_all()  # forget loaded rows so the request has to fetch everything itself
+    with count_queries() as statements:
+        r = c.get(url)
+    assert r.status_code == 200
+    return len(statements), r.json()
+
 
 class TestNoNPlusOne:
-    def _measure(self, c, url, count_queries):
-        with count_queries() as statements:
-            r = c.get(url)
-        assert r.status_code == 200
-        return len(statements), r.json()
-
-    def test_weighing_list(self, client_as, eca_admin, db, warehouse, recycler, count_queries):
+    def test_weighing_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
-        _add_weighings(db, warehouse, recycler, 3)
-        few, _ = self._measure(c, "/weighings", count_queries)
+        _varied_weighings(db, 3)
+        few, _ = _queries_for(c, "/weighings", db, count_queries)
 
-        _add_weighings(db, warehouse, factories.make_user(db, "recycler"), 27, material="vidrio")
-        many, body = self._measure(c, "/weighings", count_queries)
+        _varied_weighings(db, 27)
+        many, body = _queries_for(c, "/weighings", db, count_queries)
 
         assert body["total"] == 30 and len(body["items"]) == 20
         assert many == few, f"{few} queries for 3 rows but {many} for 20"
         assert many <= 7
 
-    def test_transaction_list(self, client_as, eca_admin, db, warehouse, count_queries):
+    def test_transaction_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
-        _add_sales(db, warehouse, eca_admin, 3)
-        few, _ = self._measure(c, "/transactions", count_queries)
+        admin_id = eca_admin.id  # read now: the session is emptied before each measurement
+        _varied_sales(db, admin_id, 3)
+        few, _ = _queries_for(c, "/transactions", db, count_queries)
 
-        _add_sales(db, warehouse, eca_admin, 27)
-        many, body = self._measure(c, "/transactions", count_queries)
+        _varied_sales(db, admin_id, 27)
+        many, body = _queries_for(c, "/transactions", db, count_queries)
 
-        assert body["total"] == 30
+        assert body["total"] == 30 and len(body["items"]) == 20
         assert many == few, f"{few} queries for 3 rows but {many} for 20"
         assert many <= 7
 
-    def test_inventory_list(self, client_as, eca_admin, db, warehouse, count_queries):
+    def test_inventory_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
-        factories.stock(db, warehouse, "papel")
-        few, _ = self._measure(c, "/inventory", count_queries)
+        factories.stock(db, db.query(Warehouse).order_by(Warehouse.name).first(), "papel")
+        few, _ = _queries_for(c, "/inventory", db, count_queries)
 
-        for material in MATERIALS[1:]:
-            factories.stock(db, warehouse, material)
-        many, body = self._measure(c, "/inventory", count_queries)
+        warehouses = db.query(Warehouse).order_by(Warehouse.name).all()  # re-read after the reset
+        for warehouse in warehouses:
+            for material in MATERIALS:
+                if (warehouse.name, material) != (warehouses[0].name, "papel"):
+                    factories.stock(db, warehouse, material)
+        many, body = _queries_for(c, "/inventory", db, count_queries)
 
-        assert len(body["items"]) == 7
-        assert many == few, f"{few} queries for 1 row but {many} for 7"
+        assert len(body["items"]) == 21
+        assert many == few, f"{few} queries for 1 row but {many} for 21"
         assert many <= 6
 
 
 # --- 3.6: aggregates are computed by the database ---------------------------------------------
 
 class TestAggregatesInSql:
-    def test_stats_cost_a_fixed_number_of_queries(self, client_as, eca_admin, db, warehouse,
-                                                  recycler, count_queries):
+    def test_stats_do_not_load_rows_into_memory(self, client_as, eca_admin, db, warehouse,
+                                                recycler, count_queries):
         c = client_as(eca_admin)
         _add_weighings(db, warehouse, recycler, 40)
         _add_sales(db, warehouse, eca_admin, 40)
         for material in MATERIALS:
             factories.stock(db, warehouse, material)
 
-        for url, bound in (("/weighings/stats", 5), ("/transactions/stats", 4), ("/inventory/stats", 3)):
+        for url, bound in (("/weighings/stats", 4), ("/transactions/stats", 3), ("/inventory/stats", 3)):
+            db.expunge_all()
             with count_queries() as statements:
                 assert c.get(url).status_code == 200
+            loaded = [o for o in db.identity_map.values()
+                      if isinstance(o, (Weighing, Transaction, InventoryItem))]
+            assert not loaded, f"{url} materialised {len(loaded)} rows instead of aggregating in SQL"
+            # bound = authentication (1) + one query per aggregate
             assert len(statements) <= bound, (url, statements)
 
     def test_weighing_stats_values(self, client_as, eca_admin, db, warehouse, recycler):
