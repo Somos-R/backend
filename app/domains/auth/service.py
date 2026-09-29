@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -64,11 +64,16 @@ def issue_token(db: Session, user: User, purpose: str) -> str:
     Caller commits.
     """
     now = datetime.now(timezone.utc)
-    db.query(OneTimeToken).filter(
-        OneTimeToken.user_id == user.id,
-        OneTimeToken.purpose == purpose,
-        OneTimeToken.used_at.is_(None),
-    ).update({OneTimeToken.used_at: now}, synchronize_session=False)
+    db.execute(
+        update(OneTimeToken)
+        .where(
+            OneTimeToken.user_id == user.id,
+            OneTimeToken.purpose == purpose,
+            OneTimeToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+        .execution_options(synchronize_session=False)
+    )
 
     raw = secrets.token_urlsafe(32)
     db.add(OneTimeToken(
@@ -85,12 +90,11 @@ def consume_token(db: Session, raw: str, purpose: str) -> User:
     """Validate and burn a token, returning its user. Raises 400 for any invalid case."""
     invalid = ApiError("invalid_link", status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_LINK)
 
-    row = (
-        db.query(OneTimeToken)
-        .filter(OneTimeToken.token_hash == _hash(raw), OneTimeToken.purpose == purpose)
+    row = db.scalars(
+        select(OneTimeToken)
+        .where(OneTimeToken.token_hash == _hash(raw), OneTimeToken.purpose == purpose)
         .with_for_update()
-        .first()
-    )
+    ).first()
     now = datetime.now(timezone.utc)
     if row is None or row.used_at is not None or row.expires_at <= now:
         raise invalid
@@ -171,16 +175,22 @@ def issue_refresh_token(db: Session, user: User, family_id: uuid.UUID | None = N
 
 
 def revoke_family(db: Session, family_id: uuid.UUID) -> None:
-    db.query(RefreshToken).filter(
-        RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None)
-    ).update({RefreshToken.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+    db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+        .execution_options(synchronize_session=False)
+    )
 
 
 def revoke_all_sessions(db: Session, user: User) -> None:
     """Kill every session of the user: refresh tokens now, access tokens via token_version."""
-    db.query(RefreshToken).filter(
-        RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
-    ).update({RefreshToken.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+    db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(timezone.utc))
+        .execution_options(synchronize_session=False)
+    )
     user.token_version += 1
 
 
@@ -190,12 +200,9 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
     Reusing a token that was already rotated (or revoked) means it leaked, so the whole
     family is revoked. That revocation is committed here, before the error is raised.
     """
-    row = (
-        db.query(RefreshToken)
-        .filter(RefreshToken.token_hash == _hash(raw))
-        .with_for_update()
-        .first()
-    )
+    row = db.scalars(
+        select(RefreshToken).where(RefreshToken.token_hash == _hash(raw)).with_for_update()
+    ).first()
     if row is None:
         raise _refresh_unauthorized()
 
@@ -272,7 +279,7 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
     if role_code is not None:
         # Roles are handed out by an organization admin, never self-assigned.
         ensure_can_assign_role(actor, role_code, data["user_type_code"])
-        role = db.query(Role).filter(Role.code == role_code, Role.is_active == True).first()  # noqa: E712
+        role = db.scalars(select(Role).where(Role.code == role_code, Role.is_active.is_(True))).first()
         if role is None:
             raise ApiError(
                 "invalid_role", status_code=422,
@@ -309,7 +316,7 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
 
 def login(db: Session, email: str, password: str) -> dict:
     """Check credentials and open a session. Returns the token response."""
-    user = db.query(User).filter(func.lower(User.email) == email.strip().lower()).first()
+    user = db.scalars(select(User).where(func.lower(User.email) == email.strip().lower())).first()
 
     # Always run one bcrypt comparison, whether the account exists, is locked or has no
     # password yet, so response time does not reveal which case it is.
@@ -402,7 +409,7 @@ def resend_verification(db: Session, user: User) -> str | None:
 
 def forgot_password(db: Session, email: str) -> tuple[User, str] | None:
     """A reset token for the account, or None. The caller answers the same either way."""
-    user = db.query(User).filter(func.lower(User.email) == email).first()
+    user = db.scalars(select(User).where(func.lower(User.email) == email)).first()
     # Pending recyclers (no password yet) get nothing.
     if user is None or not user.is_active or not user.password_hash:
         return None

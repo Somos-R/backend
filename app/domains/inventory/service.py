@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -85,14 +85,12 @@ def subtract_stock(
         return _reload(db, item_id)
 
     # Nothing updated: tell the caller why.
-    item = (
-        db.query(InventoryItem)
-        .filter(
+    item = db.scalars(
+        select(InventoryItem).where(
             InventoryItem.material_code == material_code,
             InventoryItem.warehouse_id == warehouse_id,
         )
-        .first()
-    )
+    ).first()
     if item is None:
         raise ApiError("inventory_not_found", 
             status_code=status.HTTP_404_NOT_FOUND,

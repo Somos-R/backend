@@ -1,11 +1,12 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.errors import ApiError
+from app.core.pagination import paginate
 from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
 from app.domains.audit import service as audit
@@ -34,24 +35,22 @@ def list_inventory(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    query = db.query(InventoryItem)
+    query = select(InventoryItem)
 
     if material_code:
-        query = query.filter(InventoryItem.material_code == material_code)
+        query = query.where(InventoryItem.material_code == material_code)
     if warehouse_id:
-        query = query.filter(InventoryItem.warehouse_id == warehouse_id)
+        query = query.where(InventoryItem.warehouse_id == warehouse_id)
 
     if status_:
-        query = query.filter(InventoryItem.status == status_)
+        query = query.where(InventoryItem.status == status_)
 
-    total = query.count()
-    items = (
-        query.options(selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse))
+    total, items = paginate(
+        db, query,
         # warehouse_id breaks ties so that pages never overlap or skip rows
-        .order_by(InventoryItem.material_code, InventoryItem.warehouse_id)
-        .offset(offset)
-        .limit(limit)
-        .all()
+        InventoryItem.material_code, InventoryItem.warehouse_id,
+        limit=limit, offset=offset,
+        options=(selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse)),
     )
     return InventoryListResponse(total=total, items=items)
 
@@ -61,15 +60,15 @@ def inventory_stats(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    total_stock, total_value = db.query(
+    total_stock, total_value = db.execute(select(
         func.coalesce(func.sum(InventoryItem.stock_kg), 0),
         func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.price_per_kg), 0),
-    ).one()
+    )).one()
     by_status: dict[str, int] = {
         status: count
-        for status, count in db.query(InventoryItem.status, func.count(InventoryItem.id))
-        .group_by(InventoryItem.status)
-        .all()
+        for status, count in db.execute(
+            select(InventoryItem.status, func.count(InventoryItem.id)).group_by(InventoryItem.status)
+        ).all()
     }
     return InventoryStatsResponse(
         total_stock_kg=total_stock,
@@ -85,7 +84,7 @@ def list_warehouses(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    return db.query(Warehouse).filter(Warehouse.is_active.is_(True)).order_by(Warehouse.name).all()
+    return db.scalars(select(Warehouse).where(Warehouse.is_active.is_(True)).order_by(Warehouse.name)).all()
 
 
 @router.get("/materials", response_model=list[MaterialResponse])
@@ -93,7 +92,7 @@ def list_materials(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    return db.query(Material).filter(Material.is_active.is_(True)).order_by(Material.label).all()
+    return db.scalars(select(Material).where(Material.is_active.is_(True)).order_by(Material.label)).all()
 
 
 @router.get("/{item_id}", response_model=InventoryItemResponse)

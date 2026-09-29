@@ -1,7 +1,8 @@
 """Housekeeping for the token tables. Run on a schedule (see scripts/purge_expired_tokens.py)."""
 from datetime import datetime, timedelta, timezone
+from typing import cast
 
-from sqlalchemy import or_
+from sqlalchemy import CursorResult, Delete, delete, or_
 from sqlalchemy.orm import Session
 
 from app.domains.auth.models import OneTimeToken, RefreshToken, RevokedToken
@@ -9,6 +10,11 @@ from app.domains.auth.models import OneTimeToken, RefreshToken, RevokedToken
 # Keep spent rows a little while: useful when investigating an incident, and refresh-token
 # rows are what makes reuse detection work until they expire.
 GRACE = timedelta(days=7)
+
+
+def _purge(db: Session, stmt: Delete) -> int:
+    result = cast(CursorResult, db.execute(stmt.execution_options(synchronize_session=False)))
+    return result.rowcount
 
 
 def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
@@ -22,15 +28,10 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
     cutoff = now - GRACE
 
     counts = {
-        "revoked_tokens": db.query(RevokedToken)
-        .filter(RevokedToken.expires_at < now)
-        .delete(synchronize_session=False),
-        "one_time_tokens": db.query(OneTimeToken)
-        .filter(or_(OneTimeToken.expires_at < cutoff, OneTimeToken.used_at < cutoff))
-        .delete(synchronize_session=False),
-        "refresh_tokens": db.query(RefreshToken)
-        .filter(RefreshToken.expires_at < cutoff)
-        .delete(synchronize_session=False),
+        "revoked_tokens": _purge(db, delete(RevokedToken).where(RevokedToken.expires_at < now)),
+        "one_time_tokens": _purge(db, delete(OneTimeToken).where(
+            or_(OneTimeToken.expires_at < cutoff, OneTimeToken.used_at < cutoff))),
+        "refresh_tokens": _purge(db, delete(RefreshToken).where(RefreshToken.expires_at < cutoff)),
     }
     db.commit()
     return counts
