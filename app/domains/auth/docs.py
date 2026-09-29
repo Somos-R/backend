@@ -31,6 +31,8 @@ y el rol es de su propia organización. Un registro anónimo con `role_code` res
 `role_code` el usuario queda sin rol (y sin permisos) hasta que un administrador se lo asigne.
 El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `422`.
 
+**Organización del personal (`eca` y `association`):** el personal que crea un administrador pasa a formar parte de la organización de ese administrador (`organization_id`). No se envía en la petición: no se puede elegir. Un registro anónimo queda sin organización.
+
 **Registro de reciclador (lo hace la asociación):** no requiere `password`. El reciclador queda
 en estado `0` (pendiente) y no puede iniciar sesión hasta ser verificado con `PATCH /users/{id}/verification-status`.
 

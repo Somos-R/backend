@@ -18,6 +18,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.domains.organizations import (
+    models as _organizations,  # noqa: F401 — the FK below needs its table
+)
 from app.domains.users.enums import VerificationStatus
 
 
@@ -94,6 +97,13 @@ class User(Base):
     tax_id: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     commercial_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rep_goals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # --- eca / association staff ---
+    # The organization this person works for. Nullable while onboarding is being built: accounts
+    # created before it (or registered anonymously) have none and, having no role, no permissions.
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="RESTRICT"), index=True, nullable=True
+    )
 
     # --- recycler / eca / association ---
     association_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

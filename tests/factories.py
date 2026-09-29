@@ -55,6 +55,25 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
     return user
 
 
+def make_organization(db: Session, org_type: str = "association", **overrides):
+    from app.domains.organizations.enums import OrganizationStatus, OrganizationType
+    from app.domains.organizations.models import Organization
+
+    n = next(_counter)
+    data = {
+        "type": OrganizationType(org_type),
+        "status": OrganizationStatus.approved,
+        "legal_name": f"Organización {n}",
+        "tax_id": f"9{n:08d}-{n % 10}",
+    }
+    data.update(overrides)
+    org = Organization(**data)
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    return org
+
+
 def backoffice_headers(user: User) -> dict[str, str]:
     """Headers of a signed-in Somos R account (a backoffice token, as issued after the second factor)."""
     token = create_access_token(
