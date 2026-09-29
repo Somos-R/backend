@@ -11,9 +11,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    case,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -60,13 +62,23 @@ class InventoryItem(Base):
     material:  Mapped["Material"]  = relationship("Material")
     warehouse: Mapped["Warehouse"] = relationship("Warehouse", back_populates="items")
 
-    @property
+    @hybrid_property
     def estado(self) -> str:
         if self.stock_kg == 0:
             return "agotado"
         if self.stock_kg < self.stock_min_kg:
             return "bajo_stock"
         return "disponible"
+
+    @estado.inplace.expression
+    @classmethod
+    def _estado_expression(cls):
+        # Same rule as above, evaluated by the database (filters and counts).
+        return case(
+            (cls.stock_kg == 0, "agotado"),
+            (cls.stock_kg < cls.stock_min_kg, "bajo_stock"),
+            else_="disponible",
+        )
 
     @property
     def total_value(self) -> Decimal:

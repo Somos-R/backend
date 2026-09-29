@@ -1,7 +1,8 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
@@ -37,14 +38,19 @@ def list_inventory(
     if warehouse_id:
         query = query.filter(InventoryItem.warehouse_id == warehouse_id)
 
-    all_items = query.order_by(InventoryItem.material_code).all()
-
     if estado:
-        all_items = [i for i in all_items if i.estado == estado]
+        query = query.filter(InventoryItem.estado == estado)
 
-    total = len(all_items)
-    paginated = all_items[offset: offset + limit]
-    return InventoryListResponse(total=total, items=paginated)
+    total = query.count()
+    items = (
+        query.options(selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse))
+        # warehouse_id breaks ties so that pages never overlap or skip rows
+        .order_by(InventoryItem.material_code, InventoryItem.warehouse_id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return InventoryListResponse(total=total, items=items)
 
 
 @router.get("/stats", response_model=InventoryStatsResponse)
@@ -52,18 +58,22 @@ def inventory_stats(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    items = db.query(InventoryItem).all()
-    total_stock = sum(i.stock_kg for i in items)
-    total_value = sum(i.total_value for i in items)
-    available   = sum(1 for i in items if i.estado == "disponible")
-    low_stock   = sum(1 for i in items if i.estado == "bajo_stock")
-    out_of_stock = sum(1 for i in items if i.estado == "agotado")
+    total_stock, total_value = db.query(
+        func.coalesce(func.sum(InventoryItem.stock_kg), 0),
+        func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.precio_kg), 0),
+    ).one()
+    by_estado: dict[str, int] = {
+        estado: count
+        for estado, count in db.query(InventoryItem.estado, func.count(InventoryItem.id))
+        .group_by(InventoryItem.estado)
+        .all()
+    }
     return InventoryStatsResponse(
         total_stock_kg=total_stock,
         total_value=total_value,
-        available_count=available,
-        low_stock_count=low_stock,
-        out_of_stock_count=out_of_stock,
+        available_count=by_estado.get("disponible", 0),
+        low_stock_count=by_estado.get("bajo_stock", 0),
+        out_of_stock_count=by_estado.get("agotado", 0),
     )
 
 

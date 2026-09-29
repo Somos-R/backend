@@ -97,4 +97,5 @@ docker compose exec app poetry run alembic upgrade head
 - **Estructura de dominio:** `models.py`, `schemas.py`, `router.py`, `docs.py`, `__init__.py`
 - **Seeds de datos:** dentro de la migración con `op.bulk_insert`, nunca como script manual
 - **Swagger metadata:** en `docs.py`, nunca inline en `router.py`
+- **Listados y estadísticas:** los agregados (sumas, conteos, filtros por estado) se calculan en SQL, nunca trayendo las filas a Python; los listados con relaciones en la respuesta usan `selectinload` para no hacer una consulta por fila (N+1); todo `ORDER BY` paginado lleva `id` como desempate. `tests/test_performance.py` falla si se rompe alguna de estas reglas.
 - **Idioma del código:** inglés (variables, campos DB, enums, clases) · **Idioma descripciones Swagger:** español
