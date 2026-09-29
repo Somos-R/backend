@@ -64,7 +64,9 @@ class TestRecyclerVerification:
         return factories.make_user(
             db, "recycler", verification_status=VerificationStatus.pending, password_hash="")
 
-    def test_verify_sets_initial_password_and_audit_fields(self, client_as, association_admin, db):
+    def test_verify_records_audit_fields_and_emails_an_activation_link(
+        self, client_as, association_admin, db, outbox
+    ):
         recycler = self._pending(db)
         r = client_as(association_admin).patch(
             f"/users/{recycler.id}/verification-status", json={"status": "verified"})
@@ -73,7 +75,9 @@ class TestRecyclerVerification:
         db.refresh(recycler)
         assert recycler.verified_by == association_admin.id
         assert recycler.verified_at is not None
-        assert recycler.password_hash  # initial password is set on verification
+        assert recycler.password_hash == ""  # no password until the recycler activates
+        assert [m.to for m in outbox] == [recycler.email]
+        assert "activate?token=" in outbox[0].body
 
     def test_reject_requires_reason(self, client_as, association_admin, db):
         recycler = self._pending(db)
@@ -94,11 +98,28 @@ class TestRecyclerVerification:
             f"/users/{citizen.id}/verification-status", json={"status": "verified"})
         assert r.status_code == 400
 
-    def test_verified_recycler_can_then_log_in(self, client_as, client, association_admin, db):
+    def test_recycler_logs_in_only_after_activating(
+        self, client_as, client, association_admin, db, outbox
+    ):
+        recycler = self._pending(db)
+        client_as(association_admin).patch(
+            f"/users/{recycler.id}/verification-status", json={"status": "verified"})
+        token = outbox[0].body.split("token=")[1].split()[0]
+
+        before = client.post("/auth/login", json={"email": recycler.email, "password": ""})
+        assert before.status_code == 401
+
+        assert client.post("/auth/activate", json={
+            "token": token, "password": "Reciclaje-2026!"}).status_code == 200
+        after = client.post("/auth/login", json={
+            "email": recycler.email, "password": "Reciclaje-2026!"})
+        assert after.status_code == 200
+
+    def test_national_id_is_not_a_valid_password(self, client_as, client, association_admin, db):
         recycler = self._pending(db)
         client_as(association_admin).patch(
             f"/users/{recycler.id}/verification-status", json={"status": "verified"})
         db.expire_all()
         user = db.get(User, recycler.id)
         r = client.post("/auth/login", json={"email": user.email, "password": user.id_number})
-        assert r.status_code == 200
+        assert r.status_code == 401

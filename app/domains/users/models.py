@@ -4,6 +4,7 @@ from datetime import datetime
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Enum,
     Float,
@@ -34,6 +35,8 @@ class User(Base):
     id_number: Mapped[str] = mapped_column(String(20), unique=True, index=True, nullable=False)
     user_type_code: Mapped[str] = mapped_column(String(20), ForeignKey("user_types.code"), nullable=False)
     role_code: Mapped[str | None] = mapped_column(String(20), ForeignKey("roles.code"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True, nullable=False)
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

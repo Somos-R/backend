@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,7 +17,8 @@ from app.core.permissions import (
     manageable_user_types,
     visible_user_types,
 )
-from app.core.security import get_current_user, hash_password, require_roles
+from app.core.security import get_current_user, require_roles
+from app.domains.auth import service as auth_service
 from app.domains.users.docs import (
     GET_USER_DOCS,
     LIST_USERS_DOCS,
@@ -87,6 +88,7 @@ def get_user(
 def update_recycler_status(
     user_id: uuid.UUID,
     request: UpdateRecyclerStatusRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles(*VERIFY_RECYCLERS)),
 ):
@@ -98,8 +100,12 @@ def update_recycler_status(
 
     user.verification_status = request.status
 
+    activation_token = None
     if request.status == VerificationStatus.verified:
-        user.password_hash = hash_password(user.id_number)
+        # No password is ever derived from personal data: the recycler sets their own through
+        # a one-time link emailed to them (POST /auth/activate).
+        if not user.password_hash:
+            activation_token = auth_service.issue_token(db, user, auth_service.ACTIVATE)
         user.verified_at = datetime.now(timezone.utc)
         user.verified_by = current_user.id
         user.rejection_reason = None
@@ -108,6 +114,9 @@ def update_recycler_status(
 
     db.commit()
     db.refresh(user)
+    if activation_token:
+        background_tasks.add_task(
+            auth_service.send_activation_email, user.email, user.full_name, activation_token)
     return user
 
 

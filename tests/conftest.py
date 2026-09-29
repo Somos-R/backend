@@ -32,6 +32,7 @@ def _resolve_test_url() -> str:
 TEST_DATABASE_URL = _resolve_test_url()
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production-use-0123456789"
+os.environ["EMAIL_BACKEND"] = "memory"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -39,6 +40,7 @@ from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
+from app.core import email as email_module  # noqa: E402
 from app.core.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from tests import factories  # noqa: E402
@@ -140,3 +142,11 @@ def recycler(db):
 @pytest.fixture
 def warehouse(db):
     return factories.first_warehouse(db)
+
+
+@pytest.fixture(autouse=True)
+def outbox():
+    """Emails captured by the "memory" backend; emptied around every test."""
+    email_module.outbox.clear()
+    yield email_module.outbox
+    email_module.outbox.clear()
