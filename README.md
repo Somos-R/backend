@@ -161,10 +161,7 @@ backend/
 │   └── versions/
 │       └── 0001_initial_schema.py   # Tablas + seeds: document_types, user_types, roles, users
 ├── scripts/
-│   ├── impact_check.py              # Hook PostToolUse: detecta cambios en archivos clave
 │   └── init-db.sql                  # Script de inicialización (extensiones PostGIS)
-├── .claude/
-│   └── settings.json                # Configuración de hooks para Claude Code
 ├── CLAUDE.md                        # Instrucciones de proyecto para Claude
 ├── Dockerfile                       # Imagen de la app (construida por docker compose)
 ├── docker-compose.yml               # Orquestación de todos los servicios locales
@@ -333,7 +330,7 @@ Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verificatio
 
 ### Auditoría — `/audit-log`
 
-Solo `association_admin`. `GET /audit-log` lista los eventos de seguridad y de negocio (filtros por acción, actor, objetivo, fechas y `request_id`). Ver `docs/auditoria.md`.
+Solo `association_admin`. `GET /audit-log` lista los eventos de seguridad y de negocio (filtros por acción, actor, objetivo, fechas y `request_id`).
 
 ### Catálogos — `/catalogs`
 

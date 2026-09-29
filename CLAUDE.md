@@ -64,9 +64,9 @@ DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada 
 
 **Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor.
 
-**Observabilidad** — `app/core/request_context.py` es el middleware más externo: asigna un `X-Request-ID`, escribe una línea de log (`app.access`) por petición y cuenta las métricas. El identificador y la IP del cliente viven en `app/core/context.py` y se leen desde cualquier parte sin pasar `request`. Nunca registrar cuerpos, query strings, cabeceras ni contraseñas en logs ni en Sentry. Detalle en `docs/observabilidad.md`.
+**Observabilidad** — `app/core/request_context.py` es el middleware más externo: asigna un `X-Request-ID`, escribe una línea de log (`app.access`) por petición y cuenta las métricas. El identificador y la IP del cliente viven en `app/core/context.py` y se leen desde cualquier parte sin pasar `request`. Nunca registrar cuerpos, query strings, cabeceras ni contraseñas en logs ni en Sentry.
 
-**Auditoría** — `app/domains/audit/`: tabla `audit_log` de solo anexar (un trigger de PostgreSQL rechaza `UPDATE` y `DELETE`). Toda operación sensible (sesión, contraseñas, verificación de recicladores, roles, pesajes, transacciones, precios de inventario) llama a `audit.record(db, Action.X, actor=..., target_type=..., target_id=..., details=...)` **antes del `db.commit()`**, para que el evento y la acción se confirmen o deshagan juntos. Los eventos que deben sobrevivir a un error (un login fallido) se confirman explícitamente antes de lanzar la excepción. Nunca poner contraseñas, tokens ni valores personales en `details` (se enmascaran las claves sensibles, pero no confiar solo en eso); guardar nombres de campo, no valores. Al agregar un endpoint que cambie datos sensibles, agregar su acción en `audit/actions.py`, registrarla y cubrirla en `tests/test_audit.py`. Detalle en `docs/auditoria.md`.
+**Auditoría** — `app/domains/audit/`: tabla `audit_log` de solo anexar (un trigger de PostgreSQL rechaza `UPDATE` y `DELETE`). Toda operación sensible (sesión, contraseñas, verificación de recicladores, roles, pesajes, transacciones, precios de inventario) llama a `audit.record(db, Action.X, actor=..., target_type=..., target_id=..., details=...)` **antes del `db.commit()`**, para que el evento y la acción se confirmen o deshagan juntos. Los eventos que deben sobrevivir a un error (un login fallido) se confirman explícitamente antes de lanzar la excepción. Nunca poner contraseñas, tokens ni valores personales en `details` (se enmascaran las claves sensibles, pero no confiar solo en eso); guardar nombres de campo, no valores. Al agregar un endpoint que cambie datos sensibles, agregar su acción en `audit/actions.py`, registrarla y cubrirla en `tests/test_audit.py`.
 
 **Blacklist JWT** — `POST /auth/logout` escribe el `jti` en `revoked_tokens`; `get_current_user` en `security.py` consulta esa tabla en cada request autenticado.
 
@@ -103,7 +103,7 @@ Toda dependencia nueva o actualizada deja **desactualizada la imagen de desarrol
 - **Comprueba que responde:** `curl localhost:8000/health/ready` debe dar 200 (si no, `docker compose logs --tail 30 app`).
 - Corre `poetry run pip-audit` y la verificación completa (ruff, mypy, pytest).
 - Una dependencia que la app usa en producción va en el grupo principal, no en `dev`; `Dockerfile.prod` instala desde `poetry.lock` y no necesita cambios.
-- **Avisa al usuario** (y en la descripción del PR) que se agregaron dependencias: cualquiera que haga `git pull` debe reiniciar o reconstruir. El hook `scripts/impact_check.py` lo recuerda al editar estos archivos o ejecutar `poetry add/remove/update/lock`.
+- **Avisa al usuario** (y en la descripción del PR) que se agregaron dependencias: cualquiera que haga `git pull` debe reiniciar o reconstruir.
 
 ### `migrations/versions/`
 Al crear o modificar una migración, recuerda al usuario aplicarla con:

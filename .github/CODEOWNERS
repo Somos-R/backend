@@ -1,0 +1,9 @@
+# Archivos que ejecutan código, definen el pipeline o instruyen a agentes de IA:
+# todo cambio exige revisión del dueño.
+/CLAUDE.md          @ragogarcia1
+/.claude/           @ragogarcia1
+/.github/           @ragogarcia1
+/Dockerfile*        @ragogarcia1
+/docker-compose*.yml @ragogarcia1
+/scripts/           @ragogarcia1
+/migrations/        @ragogarcia1
