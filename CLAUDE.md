@@ -60,7 +60,7 @@ URLs locales: API `http://localhost:8000` · Swagger `http://localhost:8000/docs
 
 DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada es `app/main.py`, que monta los tres routers. La infraestructura compartida vive en `app/core/` (config, database, security).
 
-**Tabla `users` polimórfica** — un único modelo SQLAlchemy maneja 6 tipos de actor (citizen, building, recycler, eca, association, b2b_client) con columnas nullable según el tipo. El tipo se discrimina vía FK `user_type_code` a la tabla lookup `user_types`.
+**Tabla `users` polimórfica** — un único modelo SQLAlchemy maneja 7 tipos de actor (citizen, building, recycler, eca, association, b2b_client y `platform`, que es Somos R: sin autoregistro y sin acceso a la API de los clientes; ver `docs/matriz-permisos.md`) con columnas nullable según el tipo. El tipo se discrimina vía FK `user_type_code` a la tabla lookup `user_types`.
 
 **Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor.
 

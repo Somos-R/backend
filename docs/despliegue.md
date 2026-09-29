@@ -56,6 +56,16 @@ No usar `/health/ready` como criterio de reinicio: una caída de la base reinici
 
 Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade head` (automatizarlo en el deploy es la tarea 5.8). Las migraciones 0011 y 0012 fallan sin cambiar nada si ya hay datos que violen las restricciones nuevas. La migración 0015 crea la extensión `unaccent` (búsqueda sin tildes en `GET /users?q=`); es una extensión de confianza, así que basta con ser el dueño de la base de datos. En un servicio administrado, comprobar que la ofrece.
 
+## 4a. Primer administrador de Somos R
+
+No hay autoregistro: después de migrar, un operador crea la primera cuenta en el servidor (la contraseña se pide por teclado, mínimo 14 caracteres, y no queda en el historial del shell):
+
+```bash
+python scripts/create_platform_admin.py --email persona@somosr.co --name "Nombre Apellido" --id-number 1234567890
+```
+
+Las demás las crea otro administrador desde el backoffice.
+
 ## 4b. Registro de auditoría en producción
 
 La tabla `audit_log` rechaza `UPDATE` y `DELETE` con un trigger, pero el dueño de la tabla aún puede hacer `TRUNCATE` o `DROP`. En producción, **la aplicación no debe conectarse con el rol dueño**: usa un rol para las migraciones y otro, con permisos mínimos, para la app (`SELECT`/`INSERT` sobre `audit_log`, sin `TRUNCATE`, `DROP` ni `ALTER`). Define además la política de retención.

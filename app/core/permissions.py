@@ -14,6 +14,7 @@ ECA_WAREHOUSE = "eca_warehouse"          # ECA · Encargado de bodega
 ASSOC_ADMIN = "association_admin"        # Asociación · Administrativo
 ASSOC_OPERATOR = "association_operator"  # Asociación · Operativo
 ROUTE_MANAGER = "route_manager"          # Asociación · Encargado de rutas
+PLATFORM_ADMIN = "platform_admin"        # Somos R · Administrador de la plataforma
 
 # A role is only valid for one actor type.
 ROLE_USER_TYPE: dict[str, str] = {
@@ -23,12 +24,18 @@ ROLE_USER_TYPE: dict[str, str] = {
     ASSOC_ADMIN: "association",
     ASSOC_OPERATOR: "association",
     ROUTE_MANAGER: "association",
+    PLATFORM_ADMIN: "platform",
 }
+
+# Roles of the customers' staff (ECA and Association). Somos R's own roles are separate: they never
+# gain access to customer endpoints just by existing.
+STAFF_ROLES = frozenset(role for role, user_type in ROLE_USER_TYPE.items() if user_type != "platform")
+PLATFORM_ROLES = frozenset({PLATFORM_ADMIN})
 
 ORG_ADMINS = frozenset({ECA_ADMIN, ASSOC_ADMIN})
 
 # --- Role groups per capability ---------------------------------------------
-USERS_DIRECTORY = frozenset(ROLE_USER_TYPE)  # any staff role can look up recyclers
+USERS_DIRECTORY = STAFF_ROLES  # any customer staff role can look up recyclers
 VERIFY_RECYCLERS = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR})
 
 WEIGHINGS_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE, ASSOC_ADMIN, ASSOC_OPERATOR})
@@ -64,6 +71,17 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "audit.view": AUDIT_READ,
 }
 
+# What Somos R's own roles may do, by capability. Endpoints of the backoffice ask for a capability,
+# not a role, so splitting duties later (who reviews vs. who manages users) means handing out
+# capabilities to new roles without touching the endpoints. Not exposed in GET /auth/me yet: a
+# capability is only announced once an endpoint enforces it.
+PLATFORM_CAPABILITIES: dict[str, frozenset[str]] = {
+    "organizations.review": frozenset({PLATFORM_ADMIN}),
+    "users.manage": frozenset({PLATFORM_ADMIN}),
+    "catalogs.manage": frozenset({PLATFORM_ADMIN}),
+    "audit.read": frozenset({PLATFORM_ADMIN}),
+}
+
 # Profile fields that only an organization admin may change (never self-service).
 PRIVILEGED_USER_FIELDS = frozenset({"role_code", "permissions", "association_id", "employee_code"})
 
@@ -83,6 +101,16 @@ def has_role(user, roles: frozenset[str]) -> bool:
 def capabilities_for(user) -> list[str]:
     """What this user may do, evaluated with the same (actor type, role) rule as the endpoints."""
     return sorted(name for name, roles in CAPABILITIES.items() if has_role(user, roles))
+
+
+def has_capability(user, capability: str) -> bool:
+    """True when the user holds a platform role that carries `capability` (and the role fits their type)."""
+    return has_role(user, PLATFORM_CAPABILITIES.get(capability, frozenset()))
+
+
+def ensure_capability(user, capability: str) -> None:
+    if not has_capability(user, capability):
+        raise forbidden()
 
 
 def ensure_role(user, roles: frozenset[str]) -> None:

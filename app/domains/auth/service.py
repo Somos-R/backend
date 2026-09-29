@@ -321,17 +321,21 @@ def login(db: Session, email: str, password: str) -> dict:
     # Always run one bcrypt comparison, whether the account exists, is locked or has no
     # password yet, so response time does not reveal which case it is.
     locked = user is not None and is_locked(user)
-    real_hash = user.password_hash if user is not None and not locked else ""
+    # Somos R's own accounts never sign in through this endpoint: they use the backoffice, with a
+    # second factor. Answering like a wrong password keeps their existence private, and not counting
+    # failures here means nobody can lock an administrator out by guessing at the public endpoint.
+    platform = user is not None and user.user_type_code == "platform"
+    real_hash = user.password_hash if user is not None and not locked and not platform else ""
     password_ok = verify_password(password, real_hash or DUMMY_PASSWORD_HASH) and bool(real_hash)
 
-    if user is None or locked or not password_ok:
-        if user is not None and not locked and user.password_hash:
+    if user is None or locked or platform or not password_ok:
+        if user is not None and not locked and not platform and user.password_hash:
             register_failed_login(user)
         # The client only ever sees one answer; the trail records the real reason. The attempted
         # email is not stored: it is attacker-controlled text and, for typos, someone else's data.
         reason = (
-            "unknown_account" if user is None else "locked" if locked
-            else "no_password" if not user.password_hash else "bad_password"
+            "unknown_account" if user is None else "platform_account" if platform
+            else "locked" if locked else "no_password" if not user.password_hash else "bad_password"
         )
         audit.record(
             db, Action.LOGIN_FAILED, outcome=FAILURE, target_type="user" if user else None,
@@ -410,8 +414,9 @@ def resend_verification(db: Session, user: User) -> str | None:
 def forgot_password(db: Session, email: str) -> tuple[User, str] | None:
     """A reset token for the account, or None. The caller answers the same either way."""
     user = db.scalars(select(User).where(func.lower(User.email) == email)).first()
-    # Pending recyclers (no password yet) get nothing.
-    if user is None or not user.is_active or not user.password_hash:
+    # Pending recyclers (no password yet) get nothing, and neither do Somos R's own accounts: their
+    # credentials are never recoverable through a public email link.
+    if user is None or not user.is_active or not user.password_hash or user.user_type_code == "platform":
         return None
     token = issue_token(db, user, RESET_PASSWORD)
     audit.record(db, Action.PASSWORD_RESET_REQUESTED, target_type="user", target_id=user.id)
