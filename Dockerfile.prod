@@ -1,5 +1,5 @@
 # ─── Stage 1: build dependencies ─────────────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.14-slim AS builder
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -13,7 +13,7 @@ RUN poetry config virtualenvs.in-project true && \
     poetry install --only=main --no-root --no-interaction
 
 # ─── Stage 2: runtime ─────────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.14-slim
 WORKDIR /app
 
 # WEB_CONCURRENCY : uvicorn worker processes (each opens its own DB pool; see DB_POOL_SIZE)
