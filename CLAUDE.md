@@ -66,6 +66,8 @@ DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada 
 
 **Observabilidad** — `app/core/request_context.py` es el middleware más externo: asigna un `X-Request-ID`, escribe una línea de log (`app.access`) por petición y cuenta las métricas. El identificador y la IP del cliente viven en `app/core/context.py` y se leen desde cualquier parte sin pasar `request`. Nunca registrar cuerpos, query strings, cabeceras ni contraseñas en logs ni en Sentry. Detalle en `docs/observabilidad.md`.
 
+**Auditoría** — `app/domains/audit/`: tabla `audit_log` de solo anexar (un trigger de PostgreSQL rechaza `UPDATE` y `DELETE`). Toda operación sensible (sesión, contraseñas, verificación de recicladores, roles, pesajes, transacciones, precios de inventario) llama a `audit.record(db, Action.X, actor=..., target_type=..., target_id=..., details=...)` **antes del `db.commit()`**, para que el evento y la acción se confirmen o deshagan juntos. Los eventos que deben sobrevivir a un error (un login fallido) se confirman explícitamente antes de lanzar la excepción. Nunca poner contraseñas, tokens ni valores personales en `details` (se enmascaran las claves sensibles, pero no confiar solo en eso); guardar nombres de campo, no valores. Al agregar un endpoint que cambie datos sensibles, agregar su acción en `audit/actions.py`, registrarla y cubrirla en `tests/test_audit.py`. Detalle en `docs/auditoria.md`.
+
 **Blacklist JWT** — `POST /auth/logout` escribe el `jti` en `revoked_tokens`; `get_current_user` en `security.py` consulta esa tabla en cada request autenticado.
 
 **PostGIS** — El campo `coverage_area` en `User` es un polígono GeoAlchemy2. La DB corre PostGIS 15-3.4 en Docker.
