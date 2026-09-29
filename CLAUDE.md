@@ -64,6 +64,8 @@ DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada 
 
 **Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor.
 
+**Observabilidad** — `app/core/request_context.py` es el middleware más externo: asigna un `X-Request-ID`, escribe una línea de log (`app.access`) por petición y cuenta las métricas. El identificador y la IP del cliente viven en `app/core/context.py` y se leen desde cualquier parte sin pasar `request`. Nunca registrar cuerpos, query strings, cabeceras ni contraseñas en logs ni en Sentry. Detalle en `docs/observabilidad.md`.
+
 **Blacklist JWT** — `POST /auth/logout` escribe el `jti` en `revoked_tokens`; `get_current_user` en `security.py` consulta esa tabla en cada request autenticado.
 
 **PostGIS** — El campo `coverage_area` en `User` es un polígono GeoAlchemy2. La DB corre PostGIS 15-3.4 en Docker.
