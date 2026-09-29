@@ -14,6 +14,8 @@ from app.core.permissions import (
     ensure_role,
 )
 from app.core.security import get_current_user, require_roles
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.transactions import service as tx_service
 from app.domains.transactions.models import (
@@ -127,6 +129,10 @@ def create_venta(
         buyer_nit=request.buyer_nit,
         buyer_email=request.buyer_email,
     )
+    audit.record(
+        db, Action.TRANSACTION_CREATED, actor=current_user, target_type="transaction", target_id=tx.id,
+        details={"type": "venta", "material": request.material_code, "kg": str(request.kg),
+                 "precio_kg": str(request.precio_kg)})
     db.commit()
     db.refresh(tx)
     return tx
@@ -159,6 +165,8 @@ def update_status(
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
 
+    previous = tx.status.value
+
     if request.status == TransactionStatus.cancelado:
         tx_service.cancel_transaction(db, tx)
     elif request.status == TransactionStatus.entregado:
@@ -170,6 +178,14 @@ def update_status(
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no soportada")
 
+    audit.record(
+        db,
+        {TransactionStatus.cancelado: Action.TRANSACTION_CANCELLED,
+         TransactionStatus.entregado: Action.TRANSACTION_DELIVERED,
+         TransactionStatus.pagado: Action.TRANSACTION_PAID}[request.status],
+        actor=actor, target_type="transaction", target_id=tx.id,
+        details={"from": previous, "type": tx.type.value, "material": tx.material_code,
+                 "kg": str(tx.kg), "precio_kg": str(tx.precio_kg)})
     db.commit()
     db.refresh(tx)
     return tx

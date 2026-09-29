@@ -52,7 +52,7 @@ def real(engine):
         }
     yield world
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users, inventory_items CASCADE"))
+        connection.execute(text("TRUNCATE users, inventory_items, audit_log CASCADE"))
 
 
 def _api(headers):

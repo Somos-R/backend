@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.database import get_db
 from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
 from app.domains.inventory.models import InventoryItem, Material, Warehouse
 from app.domains.inventory.schemas import (
     InventoryItemResponse,
@@ -110,17 +112,23 @@ def update_inventory_item(
     item_id: uuid.UUID,
     request: UpdateInventoryItemRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*INVENTORY_WRITE)),
+    actor: User = Depends(require_roles(*INVENTORY_WRITE)),
 ):
     item = db.get(InventoryItem, item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
 
+    changes: dict[str, list[str]] = {}
     if request.stock_min_kg is not None:
+        changes["stock_min_kg"] = [str(item.stock_min_kg), str(request.stock_min_kg)]
         item.stock_min_kg = request.stock_min_kg
     if request.precio_kg is not None:
+        changes["precio_kg"] = [str(item.precio_kg), str(request.precio_kg)]
         item.precio_kg = request.precio_kg
 
+    if changes:
+        audit.record(db, Action.INVENTORY_UPDATED, actor=actor, target_type="inventory_item",
+                     target_id=item.id, details={"material": item.material_code, "changes": changes})
     db.commit()
     db.refresh(item)
     return item

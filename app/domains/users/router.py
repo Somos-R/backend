@@ -18,6 +18,8 @@ from app.core.permissions import (
     visible_user_types,
 )
 from app.core.security import get_current_user, require_roles
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
 from app.domains.auth import service as auth_service
 from app.domains.users.docs import (
     GET_USER_DOCS,
@@ -112,6 +114,13 @@ def update_recycler_status(
     elif request.status == VerificationStatus.rejected:
         user.rejection_reason = request.rejection_reason
 
+    if request.status != VerificationStatus.pending:
+        audit.record(
+            db,
+            Action.RECYCLER_VERIFIED if request.status == VerificationStatus.verified else Action.RECYCLER_REJECTED,
+            actor=current_user, target_type="user", target_id=user.id,
+            details={"activation_email_queued": activation_token is not None,
+                     "has_reason": bool(request.rejection_reason)})
     db.commit()
     db.refresh(user)
     if activation_token:
@@ -148,8 +157,17 @@ def update_user(
         if request.role_code is not None:
             ensure_can_assign_role(actor, request.role_code, user.user_type_code)
 
+    previous_role = user.role_code
     for field in request.model_fields_set:
         setattr(user, field, getattr(request, field))
+
+    if request.model_fields_set:
+        # Field names only: the values are personal data and do not belong in the trail.
+        audit.record(db, Action.USER_UPDATED, actor=actor, target_type="user", target_id=user.id,
+                     details={"fields": sorted(request.model_fields_set), "self": is_self})
+    if "role_code" in request.model_fields_set and user.role_code != previous_role:
+        audit.record(db, Action.USER_ROLE_CHANGED, actor=actor, target_type="user", target_id=user.id,
+                     details={"from": previous_role, "to": user.role_code})
 
     try:
         db.commit()
