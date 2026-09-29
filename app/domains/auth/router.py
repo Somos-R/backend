@@ -2,7 +2,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core import metrics
 from app.core.database import get_db
+from app.core.errors import ApiError
 from app.core.permissions import ensure_can_assign_role
 from app.core.rate_limit import (
     forgot_password_limit,
@@ -101,7 +102,7 @@ def register(
         ensure_can_assign_role(actor, role_code, data["user_type_code"])
         role = db.query(Role).filter(Role.code == role_code, Role.is_active == True).first()
         if role is None:
-            raise HTTPException(
+            raise ApiError("invalid_role", 
                 status_code=422,
                 detail=f"role_code '{role_code}' no es válido o está inactivo",
             )
@@ -131,7 +132,7 @@ def register(
         db.refresh(user)
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
+        raise ApiError("account_already_exists", 
             status_code=status.HTTP_409_CONFLICT,
             detail="Email or ID number already registered",
         )
@@ -168,7 +169,7 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         db.commit()  # persist the failure even though the request is about to fail
         # One answer for unknown account, wrong password and temporary lock.
         metrics.LOGINS.labels("failed").inc()
-        raise HTTPException(
+        raise ApiError("invalid_credentials", 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
@@ -183,14 +184,14 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
                      target_id=user.id, details={"reason": "inactive"})
         db.commit()
         metrics.LOGINS.labels("blocked").inc()
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
+        raise ApiError("account_disabled", status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
 
     if user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified:
         audit.record(db, Action.LOGIN_FAILED, outcome=FAILURE, target_type="user",
                      target_id=user.id, details={"reason": "pending_verification"})
         db.commit()
         metrics.LOGINS.labels("blocked").inc()
-        raise HTTPException(
+        raise ApiError("account_not_verified", 
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tu cuenta está pendiente de verificación o fue rechazada",
         )
@@ -215,7 +216,7 @@ def refresh(request: Request, body: RefreshRequest, db: Session = Depends(get_db
 def activate_account(request: Request, body: ActivateRequest, db: Session = Depends(get_db)):
     user = auth_service.consume_token(db, body.token, auth_service.ACTIVATE)
     if user.user_type_code != "recycler" or user.password_hash:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=auth_service.INVALID_LINK)
+        raise ApiError("invalid_link", status_code=status.HTTP_400_BAD_REQUEST, detail=auth_service.INVALID_LINK)
 
     user.password_hash = hash_password(body.password)
     user.email_verified_at = datetime.now(timezone.utc)
@@ -300,7 +301,7 @@ def change_password(
         audit.record(db, Action.PASSWORD_CHANGE_FAILED, actor=user, outcome=FAILURE,
                      target_type="user", target_id=user.id)
         db.commit()
-        raise HTTPException(
+        raise ApiError("wrong_current_password", 
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual es incorrecta")
 
     user.password_hash = hash_password(body.new_password)

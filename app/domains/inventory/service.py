@@ -9,11 +9,12 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.errors import ApiError
 from app.domains.inventory.models import InventoryItem
 
 
@@ -93,11 +94,11 @@ def subtract_stock(
         .first()
     )
     if item is None:
-        raise HTTPException(
+        raise ApiError("inventory_not_found", 
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No hay inventario de {material_code} en la bodega seleccionada",
         )
-    raise HTTPException(
+    raise ApiError("insufficient_stock", 
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Stock insuficiente: disponible {item.stock_kg} kg, solicitado {kg} kg",
     )

@@ -1,13 +1,16 @@
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings
 from app.core.context import get_request_id
+from app.core.errors import http_exception_handler, validation_exception_handler
 from app.core.health import router as health_router
 from app.core.metrics import router as metrics_router
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
@@ -49,6 +52,8 @@ def create_app() -> FastAPI:
 
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 
     @app.exception_handler(Exception)
     async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
@@ -59,7 +64,7 @@ def create_app() -> FastAPI:
             extra={"request_id": request_id, "path": request.url.path})
         return JSONResponse(
             status_code=500,
-            content={"detail": "Error interno del servidor", "request_id": request_id},
+            content={"detail": "Error interno del servidor", "code": "internal_error", "request_id": request_id},
             headers={REQUEST_ID_HEADER: request_id or ""},
         )
 

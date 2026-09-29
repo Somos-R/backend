@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.email import send_email
+from app.core.errors import ApiError
 from app.core.security import create_access_token
 from app.domains.audit import service as audit
 from app.domains.audit.actions import FAILURE, Action
@@ -77,7 +78,7 @@ def issue_token(db: Session, user: User, purpose: str) -> str:
 
 def consume_token(db: Session, raw: str, purpose: str) -> User:
     """Validate and burn a token, returning its user. Raises 400 for any invalid case."""
-    invalid = HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_LINK)
+    invalid = ApiError("invalid_link", status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_LINK)
 
     row = (
         db.query(OneTimeToken)
@@ -143,7 +144,7 @@ INVALID_REFRESH = "El token de renovación es inválido o expiró. Inicia sesió
 
 
 def _refresh_unauthorized() -> HTTPException:
-    return HTTPException(
+    return ApiError("invalid_refresh_token", 
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=INVALID_REFRESH,
         headers={"WWW-Authenticate": "Bearer"},

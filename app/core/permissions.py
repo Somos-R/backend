@@ -3,7 +3,9 @@
 The source of truth for *who may do what* is docs/matriz-permisos.md; this
 module is that matrix expressed as data. Keep both in sync.
 """
-from fastapi import HTTPException, status
+from fastapi import status
+
+from app.core.errors import ApiError
 
 # --- Roles (codes must fit roles.code, String(20)) ---------------------------
 ECA_ADMIN = "eca_admin"                  # ECA · Administrativo
@@ -49,8 +51,8 @@ PRIVILEGED_USER_FIELDS = frozenset({"role_code", "permissions", "association_id"
 FORBIDDEN = "No tienes permisos para realizar esta acción"
 
 
-def forbidden(detail: str = FORBIDDEN) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+def forbidden(detail: str = FORBIDDEN, code: str = "forbidden") -> ApiError:
+    return ApiError(code, status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
 def has_role(user, roles: frozenset[str]) -> bool:
@@ -85,12 +87,13 @@ def manageable_user_types(user) -> frozenset[str]:
 def ensure_can_assign_role(actor, role_code: str, target_user_type: str) -> None:
     """Only an org admin may hand out roles, and only those of their own organization."""
     if actor is None or not has_role(actor, ORG_ADMINS):
-        raise forbidden("Solo un administrador puede asignar roles")
+        raise forbidden("Solo un administrador puede asignar roles", "role_assignment_admin_only")
     role_type = ROLE_USER_TYPE.get(role_code)
     if role_type is None or role_type != target_user_type:
-        raise HTTPException(
+        raise ApiError(
+            "invalid_role",
             status_code=422,
             detail=f"role_code '{role_code}' no es válido para un usuario de tipo '{target_user_type}'",
         )
     if role_type != actor.user_type_code:
-        raise forbidden("Solo puedes asignar roles de tu propia organización")
+        raise forbidden("Solo puedes asignar roles de tu propia organización", "role_assignment_other_organization")

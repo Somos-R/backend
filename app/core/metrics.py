@@ -22,6 +22,7 @@ from prometheus_client import (
 )
 
 from app.core.config import settings
+from app.core.errors import ApiError
 
 REQUESTS = Counter(
     "http_requests_total", "HTTP requests", ["method", "route", "status"])
@@ -59,7 +60,7 @@ def require_metrics_token(request: Request) -> None:
     header = request.headers.get("authorization", "")
     supplied = header[7:] if header.lower().startswith("bearer ") else ""
     if not hmac.compare_digest(supplied.encode(), expected.encode()):
-        raise HTTPException(
+        raise ApiError("unauthorized", 
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
