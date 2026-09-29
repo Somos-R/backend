@@ -151,3 +151,28 @@ def outbox():
     email_module.outbox.clear()
     yield email_module.outbox
     email_module.outbox.clear()
+
+
+@pytest.fixture
+def count_queries(db):
+    """Context manager that records the SELECT/INSERT/UPDATE/DELETE statements a block executes."""
+    from contextlib import contextmanager
+
+    from sqlalchemy import event
+
+    @contextmanager
+    def _count():
+        statements: list[str] = []
+        connection = db.get_bind()
+
+        def record(conn, cursor, statement, *args):
+            if statement.lstrip().split(None, 1)[0].upper() in {"SELECT", "INSERT", "UPDATE", "DELETE"}:
+                statements.append(" ".join(statement.split())[:160])
+
+        event.listen(connection, "before_cursor_execute", record)
+        try:
+            yield statements
+        finally:
+            event.remove(connection, "before_cursor_execute", record)
+
+    return _count

@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Numeric,
     String,
     UniqueConstraint,
@@ -43,6 +44,7 @@ class Transaction(Base):
         UniqueConstraint("weighing_id", name="uq_transactions_weighing_id"),
         CheckConstraint("kg > 0", name="ck_transactions_kg_positive"),
         CheckConstraint("precio_kg > 0", name="ck_transactions_price_positive"),
+        Index("ix_transactions_type_status_fecha", "type", "status", "fecha"),
     )
 
     id:            Mapped[uuid.UUID]         = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -9,6 +9,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Index,
     String,
     Text,
     func,
@@ -22,6 +23,9 @@ from app.domains.users.enums import VerificationStatus
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_user_type_verification", "user_type_code", "verification_status"),
+    )
 
     # --- Common fields ---
     id: Mapped[uuid.UUID] = mapped_column(

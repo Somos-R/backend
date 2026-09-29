@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.permissions import (
@@ -64,7 +65,17 @@ def list_weighings(
         query = query.filter(Weighing.estado == estado)
 
     total    = query.count()
-    weighings = query.order_by(Weighing.fecha.desc()).offset(offset).limit(limit).all()
+    weighings = (
+        query.options(
+            selectinload(Weighing.recycler),
+            selectinload(Weighing.material),
+            selectinload(Weighing.warehouse),
+        )
+        .order_by(Weighing.fecha.desc(), Weighing.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return WeighingListResponse(total=total, items=weighings)
 
 
@@ -76,24 +87,25 @@ def weighing_stats(
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    month_weighings = (
-        db.query(Weighing)
-        .filter(Weighing.fecha >= start)
+    this_month = Weighing.fecha >= start
+
+    count_month, total_kg = db.query(
+        func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)
+    ).filter(this_month).one()
+    pending = db.query(func.count(Weighing.id)).filter(Weighing.estado == WeighingStatus.pendiente).scalar()
+    by_material = (
+        db.query(Weighing.material_code, func.sum(Weighing.kg))
+        .filter(this_month)
+        .group_by(Weighing.material_code)
+        .order_by(Weighing.material_code)
         .all()
     )
 
-    total_kg    = sum(w.kg for w in month_weighings)
-    pending     = db.query(Weighing).filter(Weighing.estado == WeighingStatus.pendiente).count()
-
-    by_material: dict[str, float] = {}
-    for w in month_weighings:
-        by_material[w.material_code] = by_material.get(w.material_code, 0.0) + float(w.kg)
-
     return WeighingStatsResponse(
-        total_weighings_month=len(month_weighings),
+        total_weighings_month=count_month,
         total_kg_month=total_kg,
         pending_count=pending,
-        by_material=[{"material": k, "kg": v} for k, v in by_material.items()],
+        by_material=[{"material": material, "kg": float(kg)} for material, kg in by_material],
     )
 
 

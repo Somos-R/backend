@@ -40,6 +40,14 @@ class Settings(BaseSettings):
     # Base URL of the web/mobile app; links in emails point here.
     frontend_url: str = "http://localhost:5173"
 
+    # --- Database connection pool (per worker process) ---
+    # Total connections = workers x (pool_size + max_overflow). Keep that below the database
+    # limit (or the pooler limit, e.g. Supabase). pool_pre_ping is always on.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout: int = 30  # seconds to wait for a free connection before erroring
+    db_pool_recycle: int = 1800  # seconds; replace connections before proxies drop them
+
     # --- Abuse protection ---
     rate_limit_enabled: bool = True
     rate_limit_storage_uri: str = "memory://"  # e.g. redis://host:6379 to share across workers

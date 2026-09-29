@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.permissions import (
@@ -50,7 +52,17 @@ def list_transactions(
         query = query.filter(Transaction.material_code == material_code)
 
     total = query.count()
-    items = query.order_by(Transaction.fecha.desc()).offset(offset).limit(limit).all()
+    items = (
+        query.options(
+            selectinload(Transaction.material),
+            selectinload(Transaction.warehouse),
+            selectinload(Transaction.recycler),
+        )
+        .order_by(Transaction.fecha.desc(), Transaction.id)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return TransactionListResponse(total=total, items=items)
 
 
@@ -62,20 +74,34 @@ def transaction_stats(
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    month_txs = db.query(Transaction).filter(Transaction.fecha >= start).all()
+    this_month = Transaction.fecha >= start
 
-    compras = [t for t in month_txs if t.type == TransactionType.compra]
-    ventas  = [t for t in month_txs if t.type == TransactionType.venta]
+    per_type = {
+        tx_type: (count, kg, value)
+        for tx_type, count, kg, value in db.query(
+            Transaction.type,
+            func.count(Transaction.id),
+            func.coalesce(func.sum(Transaction.kg), 0),
+            func.coalesce(func.sum(Transaction.kg * Transaction.precio_kg), 0),
+        ).filter(this_month).group_by(Transaction.type).all()
+    }
+    pending = (
+        db.query(func.count(Transaction.id))
+        .filter(this_month, Transaction.status == TransactionStatus.pendiente)
+        .scalar()
+    )
 
-    from decimal import Decimal
+    empty = (0, Decimal("0"), Decimal("0"))
+    compras = per_type.get(TransactionType.compra, empty)
+    ventas = per_type.get(TransactionType.venta, empty)
     return TransactionStatsResponse(
-        total_compras_month  = len(compras),
-        total_ventas_month   = len(ventas),
-        total_kg_compras     = sum((t.kg for t in compras), Decimal("0")),
-        total_kg_ventas      = sum((t.kg for t in ventas), Decimal("0")),
-        total_value_compras  = sum((t.total_value for t in compras), Decimal("0")),
-        total_value_ventas   = sum((t.total_value for t in ventas), Decimal("0")),
-        pending_count        = sum(1 for t in month_txs if t.status == TransactionStatus.pendiente),
+        total_compras_month  = compras[0],
+        total_ventas_month   = ventas[0],
+        total_kg_compras     = compras[1],
+        total_kg_ventas      = ventas[1],
+        total_value_compras  = compras[2],
+        total_value_ventas   = ventas[2],
+        pending_count        = pending,
     )
 
 

@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Text,
@@ -36,6 +37,8 @@ class Weighing(Base):
     __table_args__ = (
         CheckConstraint("kg > 0", name="ck_weighings_kg_positive"),
         CheckConstraint("precio_kg > 0", name="ck_weighings_price_positive"),
+        # A recycler's history filtered by state, newest first.
+        Index("ix_weighings_recycler_estado_fecha", "recycler_id", "estado", "fecha"),
     )
 
     id:               Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
