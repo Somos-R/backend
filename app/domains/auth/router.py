@@ -8,6 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core import metrics
 from app.core.database import get_db
 from app.core.permissions import ensure_can_assign_role
 from app.core.rate_limit import (
@@ -151,6 +152,7 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
             auth_service.register_failed_login(user)
             db.commit()
         # One answer for unknown account, wrong password and temporary lock.
+        metrics.LOGINS.labels("failed").inc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
@@ -162,9 +164,11 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
         db.commit()
 
     if not user.is_active:
+        metrics.LOGINS.labels("blocked").inc()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
 
     if user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified:
+        metrics.LOGINS.labels("blocked").inc()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tu cuenta está pendiente de verificación o fue rechazada",
@@ -172,6 +176,7 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
 
     refresh_token, family_id = auth_service.issue_refresh_token(db, user)
     db.commit()
+    metrics.LOGINS.labels("success").inc()
     return TokenResponse(**auth_service.build_token_response(user, refresh_token, family_id))
 
 
