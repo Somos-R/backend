@@ -33,6 +33,8 @@ El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `4
 
 **Organización del personal (`eca` y `association`):** el personal que crea un administrador pasa a formar parte de la organización de ese administrador (`organization_id`). No se envía en la petición: no se puede elegir. Un registro anónimo queda sin organización.
 
+**Para dar de alta personal, usa `POST /users/invitations`** (la persona elige su propia contraseña por un enlace). Crear personal con contraseña por este endpoint queda como está por compatibilidad, pero es la vía que se retirará.
+
 **Registro de reciclador (lo hace la asociación):** no requiere `password`. El reciclador queda
 en estado `0` (pendiente) y no puede iniciar sesión hasta ser verificado con `PATCH /users/{id}/verification-status`.
 
@@ -165,11 +167,12 @@ _PASSWORD_POLICY = """
 demasiado repetitiva ni una contraseña común."""
 
 ACTIVATE_DOCS: dict[str, Any] = {
-    "summary": "Activar cuenta de reciclador",
+    "summary": "Activar cuenta (reciclador o personal invitado)",
     "description": f"""
-El reciclador recibe por correo un enlace de un solo uso cuando la asociación verifica su perfil
-(`PATCH /users/{{id}}/verification-status`). Este endpoint recibe el `token` del enlace y la
-contraseña elegida, y deja la cuenta lista para iniciar sesión.
+Sirve para dos casos: el **reciclador**, que recibe por correo un enlace de un solo uso cuando la asociación
+verifica su perfil (`PATCH /users/{{id}}/verification-status`), y el **personal invitado** por su organización
+(`POST /users/invitations`). Este endpoint recibe el `token` del enlace y la contraseña elegida, y deja la
+cuenta lista para iniciar sesión. Solo funciona con cuentas que aún no tienen contraseña.
 {_PASSWORD_POLICY}
 
 El enlace vence a las 48 horas y solo puede usarse una vez. No requiere autenticación.

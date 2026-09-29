@@ -33,6 +33,8 @@ class Action:
     RECYCLER_REJECTED = "recycler.rejected"
     USER_UPDATED = "user.updated"
     USER_ROLE_CHANGED = "user.role_changed"
+    USER_INVITED = "user.invited"
+    USER_INVITATION_RESENT = "user.invitation_resent"
 
     # --- Weighings ---
     WEIGHING_CREATED = "weighing.created"

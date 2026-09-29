@@ -181,3 +181,49 @@ Los campos `role_code`, `permissions`, `association_id` y `employee_code` solo l
         },
     },
 }
+
+
+INVITE_STAFF_DOCS: dict[str, Any] = {
+    "summary": "Invitar a una persona a tu organización",
+    "description": """
+Crea la cuenta de una persona del personal **sin contraseña** y le envía por correo un enlace de activación
+de un solo uso; ella elige su propia contraseña con `POST /auth/activate`. Nadie escribe la contraseña de otra
+persona. Es la forma de dar de alta personal: reemplaza a `POST /auth/register` para este fin.
+
+**Quién puede:** administradores de organización (`eca_admin`, `association_admin`).
+
+**Lo que hace:**
+- La persona queda en **tu organización** (`organization_id`), con el **tipo de usuario de tu organización**
+  (una ECA invita personal de ECA; una asociación, de asociación). No se envían ni se pueden elegir.
+- `role_code` debe ser un rol activo de tu propia organización (`GET /catalogs/roles`).
+- Hasta que active la cuenta no puede iniciar sesión. El enlace vence a las 48 horas y solo sirve una vez; si
+  vence o se pierde, usa `POST /users/{id}/invitation/resend`.
+- Queda auditado (`user.invited`, con el rol y sin datos personales).
+
+**Errores:** `403 no_organization` (tu cuenta no pertenece a una organización), `403 organization_not_active`
+(tu organización no está aprobada), `422 invalid_role`, `422 invalid_id_type`, `409 account_already_exists`
+(correo o documento ya registrados).
+""",
+    "responses": {
+        403: {"description": "No eres administrador de organización, o tu organización no puede invitar"},
+        409: {"description": "Correo o número de documento ya registrado"},
+        422: {"description": "Datos inválidos, `role_code` que no es de tu organización o `id_type` inexistente"},
+    },
+}
+
+RESEND_INVITATION_DOCS: dict[str, Any] = {
+    "summary": "Reenviar la invitación de una persona",
+    "description": """
+Envía un enlace de activación nuevo a alguien de **tu organización** que fue invitada y todavía no activó su
+cuenta. El enlace anterior deja de funcionar.
+
+**Quién puede:** administradores de organización (`eca_admin`, `association_admin`).
+
+Responde `404 user_not_found` si la persona no es de tu organización, y `409 invitation_not_pending` si ya
+activó su cuenta. Queda auditado (`user.invitation_resent`).
+""",
+    "responses": {
+        404: {"description": "La persona no existe o no es de tu organización"},
+        409: {"description": "La persona ya activó su cuenta"},
+    },
+}

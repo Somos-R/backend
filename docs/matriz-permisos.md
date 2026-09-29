@@ -36,6 +36,7 @@ Reglas generales:
 | `POST /auth/register` (con `role_code`) | ✅ su org. | — | — | ✅ su org. | — | — | — | — |
 | `POST /auth/login`, `/logout` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /auth/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `POST /users/invitations`, `POST /users/{id}/invitation/resend` | ✅ su org. | — | — | ✅ su org. | — | — | — | — |
 | `GET /catalogs/*` | ✅ público | | | | | | | |
 | `GET /users` | ✅ todos | ✅ recicladores | ✅ recicladores | ✅ eca + recicladores | ✅ recicladores | ✅ recicladores | — | — |
 | `GET /users/{id}` | ✅ todos | ✅ recicladores | ✅ recicladores | ✅ eca + recicladores | ✅ recicladores | ✅ recicladores | 👤 | 👤 |

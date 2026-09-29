@@ -28,9 +28,16 @@ from app.core.permissions import (
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.auth import service as auth_service
+from app.domains.catalogs.models import DocumentType, Role
+from app.domains.organizations.enums import OrganizationStatus
+from app.domains.organizations.models import Organization
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
-from app.domains.users.schemas import UpdateRecyclerStatusRequest, UpdateUserRequest
+from app.domains.users.schemas import (
+    InviteStaffRequest,
+    UpdateRecyclerStatusRequest,
+    UpdateUserRequest,
+)
 
 MIN_SEARCH_LENGTH = 2
 _SEARCH_COLUMNS = (User.full_name, User.id_number, User.email)
@@ -190,3 +197,78 @@ def update_user(db: Session, actor: User, user_id: uuid.UUID, request: UpdateUse
         raise ApiError("tax_id_already_registered", status_code=status.HTTP_409_CONFLICT,
                        detail="tax_id already registered")
     return user
+
+
+# --- Staff invitations ------------------------------------------------------------------
+# The organization's admin names the person and their role; the person chooses their own password
+# through an emailed one-time link (the same activation used for recyclers). Nobody ever types
+# someone else's password.
+
+def _operating_organization(db: Session, actor: User) -> Organization:
+    """The actor's organization, if it may operate. Fails closed for accounts with none."""
+    organization = db.get(Organization, actor.organization_id) if actor.organization_id else None
+    if organization is None:
+        raise ApiError("no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu cuenta no está asociada a una organización, así que no puede invitar personal")
+    if organization.status != OrganizationStatus.approved:
+        raise ApiError("organization_not_active", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu organización no está activa, así que no puede invitar personal")
+    return organization
+
+
+def invite_staff(db: Session, actor: User, request: InviteStaffRequest) -> tuple[User, str, str]:
+    """Create the account (no password) inside the actor's organization.
+
+    Returns the user, the activation token to email and the organization's name.
+    """
+    ensure_can_assign_role(actor, request.role_code, actor.user_type_code)
+    organization = _operating_organization(db, actor)
+
+    role = db.scalars(select(Role).where(Role.code == request.role_code, Role.is_active.is_(True))).first()
+    if role is None:
+        raise ApiError("invalid_role", status_code=422,
+                       detail=f"role_code '{request.role_code}' no es válido o está inactivo")
+    if db.get(DocumentType, request.id_type) is None:
+        raise ApiError("invalid_id_type", status_code=422, detail=f"id_type '{request.id_type}' no es válido")
+
+    user = User(
+        email=request.email, full_name=request.full_name.strip(), phone=request.phone,
+        id_type=request.id_type, id_number=request.id_number,
+        user_type_code=actor.user_type_code, role_code=request.role_code,
+        organization_id=organization.id, password_hash="",
+        # Legacy per-person copies of the organization's data (the organization is the source of truth).
+        association_nit=organization.tax_id if actor.user_type_code == "association" else None,
+        legal_representative=organization.legal_representative if actor.user_type_code == "association" else None,
+    )
+    try:
+        db.add(user)
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError("account_already_exists", status_code=status.HTTP_409_CONFLICT,
+                       detail="Email or ID number already registered")
+    token = auth_service.issue_token(db, user, auth_service.ACTIVATE)
+    # The role, never the address or the document: those are personal data.
+    audit.record(db, Action.USER_INVITED, actor=actor, target_type="user", target_id=user.id,
+                 details={"role_code": request.role_code})
+    db.commit()
+    db.refresh(user)
+    return user, token, organization.legal_name
+
+
+def resend_invitation(db: Session, actor: User, user_id: uuid.UUID) -> tuple[User, str, str]:
+    """A fresh activation link for someone invited who has not accepted yet (the old link stops working)."""
+    organization = _operating_organization(db, actor)
+    user = db.get(User, user_id)
+    if (
+        user is None or user.user_type_code not in STAFF_TYPES
+        or user.user_type_code not in manageable_user_types(actor) or not in_scope(actor, user)
+    ):
+        raise _user_not_found()
+    if user.password_hash:
+        raise ApiError("invitation_not_pending", status_code=status.HTTP_409_CONFLICT,
+                       detail="Esta persona no tiene una invitación pendiente")
+    token = auth_service.issue_token(db, user, auth_service.ACTIVATE)
+    audit.record(db, Action.USER_INVITATION_RESENT, actor=actor, target_type="user", target_id=user.id)
+    db.commit()
+    return user, token, organization.legal_name
