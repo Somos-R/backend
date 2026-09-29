@@ -17,6 +17,16 @@ class Action:
     PASSWORD_CHANGE_FAILED = "password.change_failed"
     PLATFORM_ADMIN_CREATED = "platform_admin.created"
 
+    # --- Backoffice (Somos R's own accounts) ---
+    ADMIN_LOGIN = "admin.login"
+    ADMIN_LOGIN_FAILED = "admin.login_failed"
+    ADMIN_LOGOUT = "admin.logout"
+    ADMIN_MFA_ENROLLED = "admin.mfa_enrolled"
+    ADMIN_MFA_FAILED = "admin.mfa_failed"
+    ADMIN_RECOVERY_CODE_USED = "admin.recovery_code_used"
+    ADMIN_RECOVERY_CODES_REGENERATED = "admin.recovery_codes_regenerated"
+    ADMIN_MFA_RESET = "admin.mfa_reset"
+
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
     RECYCLER_REJECTED = "recycler.rejected"

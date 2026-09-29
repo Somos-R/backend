@@ -56,7 +56,16 @@ No usar `/health/ready` como criterio de reinicio: una caída de la base reinici
 
 Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade head` (automatizarlo en el deploy es la tarea 5.8). Las migraciones 0011 y 0012 fallan sin cambiar nada si ya hay datos que violen las restricciones nuevas. La migración 0015 crea la extensión `unaccent` (búsqueda sin tildes en `GET /users?q=`); es una extensión de confianza, así que basta con ser el dueño de la base de datos. En un servicio administrado, comprobar que la ofrece.
 
-## 4a. Primer administrador de Somos R
+## 4a. Backoffice: claves y primer administrador
+
+Variables nuevas (ver `.env.example`):
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `MFA_ENCRYPTION_KEY` | Clave Fernet: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` | Cifra en la base los secretos del segundo factor. **Obligatoria** en staging y producción (la app no arranca sin ella). Guardarla fuera de la base de datos y respaldarla: si se pierde, hay que restablecer el segundo factor de todas las cuentas. |
+| `ADMIN_ALLOWED_CIDRS` | Direcciones permitidas, p. ej. `203.0.113.0/24,198.51.100.7/32` | Restringe todo `/admin` a esas redes. Vacía = accesible desde cualquier dirección (se avisa al arrancar). Detrás de un proxy, `uvicorn --proxy-headers --forwarded-allow-ips`. |
+
+**Primer administrador de Somos R**
 
 No hay autoregistro: después de migrar, un operador crea la primera cuenta en el servidor (la contraseña se pide por teclado, mínimo 14 caracteres, y no queda en el historial del shell):
 
@@ -65,6 +74,10 @@ python scripts/create_platform_admin.py --email persona@somosr.co --name "Nombre
 ```
 
 Las demás las crea otro administrador desde el backoffice.
+
+**Configurar el segundo factor de inmediato.** Mientras una cuenta no lo haya configurado, quien conozca su contraseña podría configurarlo él. Por eso la persona debe hacer su primer ingreso (`POST /admin/auth/login` y luego el enrolamiento) apenas se cree la cuenta, y guardar los códigos de recuperación. Si se pierde el acceso: otra persona de Somos R puede restablecerlo desde el backoffice o, como último recurso, un operador con `python scripts/reset_platform_mfa.py --email persona@somosr.co`.
+
+Este despliegue cambia el token de los clientes (ahora lleva `aud`): las sesiones abiertas se renuevan solas con su token de refresco, sin que las personas tengan que volver a entrar.
 
 ## 4b. Registro de auditoría en producción
 

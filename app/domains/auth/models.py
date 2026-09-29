@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,10 +53,45 @@ class RefreshToken(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
     family_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True, nullable=False)
+    # Who the session is for ("portal" or "backoffice"): a refresh token only renews its own audience.
+    audience: Mapped[str] = mapped_column(String(20), server_default="portal", default="portal", nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MfaCredential(Base):
+    """A user's TOTP second factor. Enabled only once they prove they hold the secret."""
+
+    __tablename__ = "mfa_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Last accepted time step: a code cannot be used twice or after a newer one.
+    last_step: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class RecoveryCode(Base):
+    """One-time code that replaces the second factor when the device is lost. Only its hash is stored."""
+
+    __tablename__ = "recovery_codes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -21,7 +21,8 @@ dependencies = [
     "slowapi (>=0.1.9,<0.2)",
     "pyjwt (>=2.9,<3)",
     "sentry-sdk (>=2.20,<3)",
-    "prometheus-client (>=0.21,<1)"
+    "prometheus-client (>=0.21,<1)",
+    "cryptography (>=50.0.1,<51.0.0)"
 ]
 
 

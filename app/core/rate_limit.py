@@ -34,6 +34,14 @@ def forgot_password_limit() -> str:
     return settings.rate_limit_forgot_password
 
 
+def admin_auth_limit() -> str:
+    return settings.rate_limit_admin_auth
+
+
+def admin_limit() -> str:
+    return settings.rate_limit_admin
+
+
 def token_flow_limit() -> str:
     return settings.rate_limit_token_flows
 

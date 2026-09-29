@@ -121,8 +121,10 @@ class TestCapabilities:
             return {"id": str(user.id)}
 
         app.dependency_overrides[get_db] = lambda: db
-        assert TestClient(app, headers=factories.auth_headers(platform_admin)).get("/probe").status_code == 200
-        assert TestClient(app, headers=factories.auth_headers(eca_admin)).get("/probe").status_code == 403
+        assert TestClient(app, headers=factories.backoffice_headers(platform_admin)).get("/probe").status_code == 200
+        assert TestClient(app, headers=factories.backoffice_headers(eca_admin)).get("/probe").status_code == 401
+        # a portal token, even of a platform user, is not a backoffice token
+        assert TestClient(app, headers=factories.auth_headers(platform_admin)).get("/probe").status_code == 401
         assert TestClient(app).get("/probe").status_code in (401, 403)
 
 

@@ -160,15 +160,25 @@ def _refresh_unauthorized() -> HTTPException:
     )
 
 
-def issue_refresh_token(db: Session, user: User, family_id: uuid.UUID | None = None) -> tuple[str, uuid.UUID]:
-    """Create a refresh token (new family unless `family_id` is given). Returns (raw, family). Caller commits."""
+def issue_refresh_token(
+    db: Session, user: User, family_id: uuid.UUID | None = None, audience: str = "portal"
+) -> tuple[str, uuid.UUID]:
+    """Create a refresh token (new family unless `family_id` is given). Returns (raw, family). Caller commits.
+
+    Backoffice sessions are shorter than customer sessions.
+    """
+    lifetime = (
+        timedelta(hours=settings.backoffice_refresh_token_hours) if audience == "backoffice"
+        else timedelta(days=settings.refresh_token_days)
+    )
     raw = secrets.token_urlsafe(48)
     family = family_id or uuid.uuid4()
     db.add(RefreshToken(
         user_id=user.id,
         family_id=family,
+        audience=audience,
         token_hash=_hash(raw),
-        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_days),
+        expires_at=datetime.now(timezone.utc) + lifetime,
     ))
     db.flush()
     return raw, family
@@ -194,8 +204,13 @@ def revoke_all_sessions(db: Session, user: User) -> None:
     user.token_version += 1
 
 
-def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
+def rotate_refresh_token(
+    db: Session, raw: str, audience: str = "portal", user_type: str | None = None
+) -> tuple[User, str, uuid.UUID]:
     """Exchange a refresh token for a new one in the same family. Raises 401 otherwise.
+
+    A token only renews the audience it was issued for: a backoffice token presented at the portal
+    (or the reverse) is refused as if it did not exist.
 
     Reusing a token that was already rotated (or revoked) means it leaked, so the whole
     family is revoked. That revocation is committed here, before the error is raised.
@@ -203,7 +218,7 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
     row = db.scalars(
         select(RefreshToken).where(RefreshToken.token_hash == _hash(raw)).with_for_update()
     ).first()
-    if row is None:
+    if row is None or row.audience != audience:
         raise _refresh_unauthorized()
 
     now = datetime.now(timezone.utc)
@@ -225,6 +240,7 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
     if (
         user is None
         or not user.is_active
+        or (user_type is not None and user.user_type_code != user_type)
         or (user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified)
     ):
         audit.record(db, Action.REFRESH_DENIED, outcome=FAILURE, target_type="user", target_id=row.user_id,
@@ -234,7 +250,7 @@ def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
         raise _refresh_unauthorized()
 
     row.used_at = now
-    new_raw, family = issue_refresh_token(db, user, row.family_id)
+    new_raw, family = issue_refresh_token(db, user, row.family_id, audience)
     return user, new_raw, family
 
 
@@ -262,13 +278,18 @@ def build_token_response(user: User, refresh_token: str, family_id: uuid.UUID) -
 DUMMY_PASSWORD_HASH = hash_password(secrets.token_hex(16))
 
 
-def logout(db: Session, actor: User, payload: dict) -> None:
+def revoke_session(db: Session, payload: dict) -> None:
+    """Close the session an access token belongs to: the token itself and its refresh family. Caller commits."""
     db.add(RevokedToken(
         jti=payload["jti"],
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     ))
     if payload.get("fid"):
         revoke_family(db, uuid.UUID(payload["fid"]))
+
+
+def logout(db: Session, actor: User, payload: dict) -> None:
+    revoke_session(db, payload)
     audit.record(db, Action.LOGOUT, actor=actor, target_type="user", target_id=actor.id)
     db.commit()
 

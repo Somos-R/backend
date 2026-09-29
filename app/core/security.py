@@ -17,7 +17,13 @@ from app.core.permissions import ensure_capability, ensure_role
 bearer_scheme = HTTPBearer()
 optional_bearer_scheme = HTTPBearer(auto_error=False)
 
-REQUIRED_CLAIMS = ["exp", "iat", "sub", "jti"]
+# Who a token is for. A token is only accepted by the audience it was issued for, in both
+# directions: a customer token is useless in /admin and a backoffice token is useless in the portal.
+PORTAL = "portal"
+BACKOFFICE = "backoffice"
+BACKOFFICE_MFA = "backoffice-mfa"  # the short-lived proof of password, before the second factor
+
+REQUIRED_CLAIMS = ["exp", "iat", "sub", "jti", "aud"]
 
 
 def hash_password(plain: str) -> str:
@@ -31,12 +37,14 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(data: dict) -> str:
+def create_access_token(data: dict, audience: str = PORTAL, minutes: int | None = None) -> str:
     now = datetime.now(timezone.utc)
     payload = data.copy()
     payload["jti"] = str(uuid.uuid4())
     payload["iat"] = now
-    payload["exp"] = now + timedelta(minutes=settings.access_token_expire_minutes)
+    payload["aud"] = audience
+    payload["exp"] = now + timedelta(
+        minutes=settings.access_token_expire_minutes if minutes is None else minutes)
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -49,25 +57,26 @@ def _unauthorized(code: str, detail: str) -> ApiError:
     )
 
 
-def decode_access_token(token: str) -> dict:
-    """Verify signature, expiry and required claims. Raises 401 for anything else."""
+def decode_access_token(token: str, audience: str = PORTAL) -> dict:
+    """Verify signature, expiry, audience and required claims. Raises 401 for anything else."""
     try:
         return jwt.decode(
             token,
             settings.secret_key,
             algorithms=[settings.algorithm],
+            audience=audience,
             options={"require": REQUIRED_CLAIMS},
         )
     except jwt.InvalidTokenError:
         raise _unauthorized("invalid_token", "Token inválido o expirado")
 
 
-def _user_from_token(token: str, db: Session):
+def _user_from_token(token: str, db: Session, audience: str = PORTAL):
     # Imported here: the models import core.database, which would make a cycle at load time.
     from app.domains.auth.models import RevokedToken
     from app.domains.users.models import User
 
-    payload = decode_access_token(token)
+    payload = decode_access_token(token, audience)
     try:
         user_id = uuid.UUID(payload["sub"])
     except (ValueError, TypeError):
@@ -110,6 +119,19 @@ def get_current_user(
     return user
 
 
+def get_platform_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    """The signed-in Somos R account: a backoffice token (issued only after the second factor)."""
+    user = _user_from_token(credentials.credentials, db, BACKOFFICE)
+    if user.user_type_code != "platform":
+        raise _unauthorized("invalid_token", "Token inválido o expirado")
+    _identify(request, user)
+    return user
+
+
 def get_optional_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
@@ -126,7 +148,7 @@ def get_optional_user(
 def require_capability(capability: str):
     """Dependency factory for backoffice endpoints: 403 unless the caller's platform role carries `capability`."""
 
-    def dependency(user=Depends(get_current_user)):
+    def dependency(user=Depends(get_platform_user)):
         ensure_capability(user, capability)
         return user
 
