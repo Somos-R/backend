@@ -5,7 +5,7 @@ import pytest
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.domains.auth import router as auth_router
+from app.domains.auth import service as auth_service
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 from tests import factories
@@ -181,13 +181,13 @@ class TestConstantTimeLogin:
     @pytest.fixture
     def bcrypt_calls(self, monkeypatch):
         calls = []
-        real = auth_router.verify_password
+        real = auth_service.verify_password
 
         def spy(plain, hashed):
             calls.append(hashed)
             return real(plain, hashed)
 
-        monkeypatch.setattr(auth_router, "verify_password", spy)
+        monkeypatch.setattr(auth_service, "verify_password", spy)
         return calls
 
     def test_unknown_account_still_runs_one_bcrypt_check(self, client, bcrypt_calls):
