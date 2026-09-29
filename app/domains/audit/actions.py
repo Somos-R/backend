@@ -26,6 +26,7 @@ class Action:
     ADMIN_RECOVERY_CODE_USED = "admin.recovery_code_used"
     ADMIN_RECOVERY_CODES_REGENERATED = "admin.recovery_codes_regenerated"
     ADMIN_MFA_RESET = "admin.mfa_reset"
+    ADMIN_AUDIT_VIEWED = "admin.audit_viewed"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
