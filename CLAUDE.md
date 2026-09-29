@@ -103,7 +103,7 @@ Toda dependencia nueva o actualizada deja **desactualizada la imagen de desarrol
 - **Comprueba que responde:** `curl localhost:8000/health/ready` debe dar 200 (si no, `docker compose logs --tail 30 app`).
 - Corre `poetry run pip-audit` y la verificación completa (ruff, mypy, pytest).
 - Una dependencia que la app usa en producción va en el grupo principal, no en `dev`; `Dockerfile.prod` instala desde `poetry.lock` y no necesita cambios.
-- **Avisa al usuario** (y en la descripción del PR) que se agregaron dependencias: cualquiera que haga `git pull` debe reiniciar o reconstruir. El hook `scripts/impact_check.py` lo recuerda al editar estos archivos o ejecutar `poetry add/remove/update/lock`.
+- **Avisa al usuario** (y en la descripción del PR) que se agregaron dependencias: cualquiera que haga `git pull` debe reiniciar o reconstruir.
 
 ### `migrations/versions/`
 Al crear o modificar una migración, recuerda al usuario aplicarla con:

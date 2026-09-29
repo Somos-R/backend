@@ -207,5 +207,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Claude Code — local, per-machine settings
+.claude/settings.local.json
+
 # Kubernetes — secret values (never commit real credentials)
 k8s/secret.yaml
