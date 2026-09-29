@@ -65,6 +65,31 @@ Consulta los valores válidos de `id_type` en `GET /catalogs/document-types`.
     },
 }
 
+ME_DOCS: dict[str, Any] = {
+    "summary": "Perfil y capacidades de la sesión actual",
+    "description": """
+Devuelve el perfil del usuario autenticado (mismos campos que `GET /users/{id}`) y **`capabilities`**:
+la lista de lo que puede hacer, **evaluada por el servidor** con el par (tipo de usuario, rol).
+
+Las capacidades usan notación de punto (`weighings.create`, `inventory.view`, `recyclers.verify`, ...)
+y salen del mismo módulo de permisos que protege los endpoints, así que no pueden contradecirlos.
+Una capacidad solo existe si hay un endpoint que la exige.
+
+Sirve para mostrar u ocultar botones y pantallas sin duplicar la matriz de permisos en el cliente.
+**No es una barrera de seguridad**: cada endpoint sigue respondiendo `403` a quien no tiene permiso.
+Un usuario sin rol asignado recibe la lista vacía. El rol se lee de la base de datos, no del token,
+así que el resultado está al día aunque el token sea anterior a un cambio de rol.
+
+Requiere autenticación con **Bearer token**.
+""",
+    "responses": {
+        401: {
+            "description": "Token ausente, inválido o ya revocado",
+            "content": {"application/json": {"example": {"detail": "Token inválido o expirado", "code": "invalid_token"}}},
+        },
+    },
+}
+
 LOGOUT_DOCS: dict[str, Any] = {
     "summary": "Cerrar sesión",
     "description": """

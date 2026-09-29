@@ -45,6 +45,25 @@ PAYMENTS = frozenset({ECA_ADMIN, ASSOC_ADMIN})
 
 AUDIT_READ = frozenset({ASSOC_ADMIN})
 
+# Capabilities the clients ask about (GET /auth/me). Built from the same role groups that protect
+# the endpoints, so what the client is told can never drift from what the API enforces. Rule: a
+# capability exists only when an endpoint enforces it.
+CAPABILITIES: dict[str, frozenset[str]] = {
+    "recyclers.view": USERS_DIRECTORY,
+    "recyclers.verify": VERIFY_RECYCLERS,
+    "weighings.view": WEIGHINGS_READ,
+    "weighings.create": WEIGHINGS_CREATE,
+    "weighings.review": WEIGHINGS_REVIEW,
+    "weighings.pay": PAYMENTS,
+    "inventory.view": INVENTORY_READ,
+    "inventory.edit": INVENTORY_WRITE,
+    "transactions.view": TRANSACTIONS_READ,
+    "transactions.create": TRANSACTIONS_WRITE,
+    "transactions.manage": TRANSACTIONS_WRITE,
+    "transactions.pay": PAYMENTS,
+    "audit.view": AUDIT_READ,
+}
+
 # Profile fields that only an organization admin may change (never self-service).
 PRIVILEGED_USER_FIELDS = frozenset({"role_code", "permissions", "association_id", "employee_code"})
 
@@ -59,6 +78,11 @@ def has_role(user, roles: frozenset[str]) -> bool:
     """True when the user holds one of `roles` *and* that role fits their actor type."""
     role = user.role_code
     return role in roles and ROLE_USER_TYPE.get(role) == user.user_type_code
+
+
+def capabilities_for(user) -> list[str]:
+    """What this user may do, evaluated with the same (actor type, role) rule as the endpoints."""
+    return sorted(name for name, roles in CAPABILITIES.items() if has_role(user, roles))
 
 
 def ensure_role(user, roles: frozenset[str]) -> None:
