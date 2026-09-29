@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Numeric,
@@ -43,6 +44,9 @@ class InventoryItem(Base):
     __tablename__ = "inventory_items"
     __table_args__ = (
         UniqueConstraint("material_code", "warehouse_id", name="uq_inventory_material_warehouse"),
+        CheckConstraint("stock_kg >= 0", name="ck_inventory_stock_non_negative"),
+        CheckConstraint("stock_min_kg >= 0", name="ck_inventory_stock_min_non_negative"),
+        CheckConstraint("precio_kg >= 0", name="ck_inventory_price_non_negative"),
     )
 
     id:                  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

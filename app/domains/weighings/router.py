@@ -150,7 +150,8 @@ def update_weighing_status(
     # Paying moves money; validating/rejecting is the review step.
     ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.pagado else WEIGHINGS_REVIEW)
 
-    weighing = db.get(Weighing, weighing_id)
+    # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
+    weighing = db.query(Weighing).filter(Weighing.id == weighing_id).with_for_update().first()
     if not weighing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 

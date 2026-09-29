@@ -89,7 +89,7 @@ def cancel_transaction(db: Session, transaction: Transaction) -> Transaction:
             material_code=transaction.material_code,
             warehouse_id=transaction.warehouse_id,
             kg=transaction.kg,
-            precio_kg=transaction.precio_kg,
+            precio_kg=None,  # returning stock must not reprice the existing inventory
         )
     transaction.status = TransactionStatus.cancelado
     return transaction
