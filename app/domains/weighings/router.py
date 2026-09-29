@@ -5,7 +5,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.permissions import (
+    PAYMENTS,
+    WEIGHINGS_CREATE,
+    WEIGHINGS_READ,
+    WEIGHINGS_REVIEW,
+    ensure_role,
+    forbidden,
+    has_role,
+)
+from app.core.security import get_current_user, require_roles
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
@@ -21,6 +30,12 @@ from app.domains.weighings.schemas import (
 router = APIRouter(prefix="/weighings", tags=["weighings"])
 
 
+def get_weighing_reader(user: User = Depends(get_current_user)) -> User:
+    if user.user_type_code == "recycler" or has_role(user, WEIGHINGS_READ):
+        return user
+    raise forbidden()
+
+
 @router.get("", response_model=WeighingListResponse)
 def list_weighings(
     recycler_id:   uuid.UUID | None = Query(default=None),
@@ -30,8 +45,13 @@ def list_weighings(
     limit:         int              = Query(default=20, ge=1, le=100),
     offset:        int              = Query(default=0, ge=0),
     db:            Session          = Depends(get_db),
-    _:             User             = Depends(get_current_user),
+    actor:         User             = Depends(get_weighing_reader),
 ):
+    if actor.user_type_code == "recycler":
+        if recycler_id and recycler_id != actor.id:
+            raise forbidden()
+        recycler_id = actor.id
+
     query = db.query(Weighing)
 
     if recycler_id:
@@ -51,7 +71,7 @@ def list_weighings(
 @router.get("/stats", response_model=WeighingStatsResponse)
 def weighing_stats(
     db: Session = Depends(get_db),
-    _:  User    = Depends(get_current_user),
+    _:  User    = Depends(require_roles(*WEIGHINGS_READ)),
 ):
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -81,7 +101,7 @@ def weighing_stats(
 def create_weighing(
     request: CreateWeighingRequest,
     db:      Session = Depends(get_db),
-    _:       User    = Depends(get_current_user),
+    _:       User    = Depends(require_roles(*WEIGHINGS_CREATE)),
 ):
     recycler = db.get(User, request.recycler_id)
     if not recycler or recycler.user_type_code != "recycler":
@@ -111,10 +131,11 @@ def create_weighing(
 def get_weighing(
     weighing_id: uuid.UUID,
     db:          Session = Depends(get_db),
-    _:           User    = Depends(get_current_user),
+    actor:       User    = Depends(get_weighing_reader),
 ):
     weighing = db.get(Weighing, weighing_id)
-    if not weighing:
+    # A recycler asking for someone else's weighing gets the same answer as for a missing one.
+    if not weighing or (actor.user_type_code == "recycler" and weighing.recycler_id != actor.id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
     return weighing
 
@@ -126,6 +147,9 @@ def update_weighing_status(
     db:          Session = Depends(get_db),
     current_user: User   = Depends(get_current_user),
 ):
+    # Paying moves money; validating/rejecting is the review step.
+    ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.pagado else WEIGHINGS_REVIEW)
+
     weighing = db.get(Weighing, weighing_id)
     if not weighing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")

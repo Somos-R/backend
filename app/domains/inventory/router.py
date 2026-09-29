@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
+from app.core.security import require_roles
 from app.domains.inventory.models import InventoryItem, Material, Warehouse
 from app.domains.inventory.schemas import (
     InventoryItemResponse,
@@ -27,7 +28,7 @@ def list_inventory(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
     query = db.query(InventoryItem)
 
@@ -49,7 +50,7 @@ def list_inventory(
 @router.get("/stats", response_model=InventoryStatsResponse)
 def inventory_stats(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
     items = db.query(InventoryItem).all()
     total_stock = sum(i.stock_kg for i in items)
@@ -69,7 +70,7 @@ def inventory_stats(
 @router.get("/warehouses", response_model=list[WarehouseResponse])
 def list_warehouses(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
     return db.query(Warehouse).filter(Warehouse.is_active.is_(True)).order_by(Warehouse.name).all()
 
@@ -77,7 +78,7 @@ def list_warehouses(
 @router.get("/materials", response_model=list[MaterialResponse])
 def list_materials(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
     return db.query(Material).filter(Material.is_active.is_(True)).order_by(Material.label).all()
 
@@ -86,7 +87,7 @@ def list_materials(
 def get_inventory_item(
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_READ)),
 ):
     item = db.get(InventoryItem, item_id)
     if not item:
@@ -99,7 +100,7 @@ def update_inventory_item(
     item_id: uuid.UUID,
     request: UpdateInventoryItemRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_roles(*INVENTORY_WRITE)),
 ):
     item = db.get(InventoryItem, item_id)
     if not item:

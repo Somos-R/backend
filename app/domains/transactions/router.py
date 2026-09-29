@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.permissions import (
+    PAYMENTS,
+    TRANSACTIONS_READ,
+    TRANSACTIONS_WRITE,
+    ensure_role,
+)
+from app.core.security import get_current_user, require_roles
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.transactions import service as tx_service
 from app.domains.transactions.models import (
@@ -33,7 +39,7 @@ def list_transactions(
     limit:       int                     = Query(default=20, ge=1, le=100),
     offset:      int                     = Query(default=0, ge=0),
     db:          Session                 = Depends(get_db),
-    _:           User                    = Depends(get_current_user),
+    _:           User                    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
     query = db.query(Transaction)
     if type:
@@ -51,7 +57,7 @@ def list_transactions(
 @router.get("/stats", response_model=TransactionStatsResponse)
 def transaction_stats(
     db: Session = Depends(get_db),
-    _:  User    = Depends(get_current_user),
+    _:  User    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -77,7 +83,7 @@ def transaction_stats(
 def create_venta(
     request:      CreateVentaRequest,
     db:           Session = Depends(get_db),
-    current_user: User    = Depends(get_current_user),
+    current_user: User    = Depends(require_roles(*TRANSACTIONS_WRITE)),
 ):
     if not db.get(Material, request.material_code):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
@@ -104,7 +110,7 @@ def create_venta(
 def get_transaction(
     transaction_id: uuid.UUID,
     db:             Session = Depends(get_db),
-    _:              User    = Depends(get_current_user),
+    _:              User    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
     tx = db.get(Transaction, transaction_id)
     if not tx:
@@ -117,8 +123,11 @@ def update_status(
     transaction_id: uuid.UUID,
     request:        UpdateTransactionStatusRequest,
     db:             Session = Depends(get_db),
-    _:              User    = Depends(get_current_user),
+    actor:          User    = Depends(get_current_user),
 ):
+    # Paying a purchase moves money; cancelling/delivering moves stock.
+    ensure_role(actor, PAYMENTS if request.status == TransactionStatus.pagado else TRANSACTIONS_WRITE)
+
     tx = db.get(Transaction, transaction_id)
     if not tx:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")

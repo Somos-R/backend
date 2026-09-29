@@ -30,8 +30,14 @@ Usa el campo **`code`** como valor de `role_code` al llamar `POST /auth/register
 | code | Descripción |
 |------|-------------|
 | `eca_admin` | Administrador ECA |
-| `eca_operator` | Operador ECA |
+| `eca_operator` | Operador de báscula ECA |
+| `eca_warehouse` | Encargado de bodega ECA |
 | `association_admin` | Administrador Asociación |
+| `association_operator` | Operativo Asociación |
+| `route_manager` | Encargado de rutas |
+
+Cada rol solo es válido para su tipo de usuario (`eca_*` → `eca`; el resto → `association`).
+Asignarlo requiere ser administrador de esa organización.
 
 No requiere autenticación.
 """,

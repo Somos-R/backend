@@ -63,14 +63,14 @@ class TestRegister:
         r = client.post("/auth/register", json=_citizen_payload(user_type_code="building"))
         assert r.status_code == 422
 
-    def test_valid_role_code_is_accepted_for_eca(self, client):
-        r = client.post("/auth/register", json=_citizen_payload(
-            user_type_code="eca", role_code="eca_admin"))
+    def test_admin_can_register_staff_with_a_valid_role(self, client_as, eca_admin):
+        r = client_as(eca_admin).post("/auth/register", json=_citizen_payload(
+            user_type_code="eca", role_code="eca_operator"))
         assert r.status_code == 201
-        assert r.json()["role_code"] == "eca_admin"
+        assert r.json()["role_code"] == "eca_operator"
 
-    def test_invalid_role_code_is_rejected(self, client):
-        r = client.post("/auth/register", json=_citizen_payload(
+    def test_invalid_role_code_is_rejected(self, client_as, eca_admin):
+        r = client_as(eca_admin).post("/auth/register", json=_citizen_payload(
             user_type_code="eca", role_code="superadmin"))
         assert r.status_code == 422
 

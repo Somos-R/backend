@@ -15,6 +15,9 @@ DEFAULT_PASSWORD = "Segura12345"
 
 _counter = itertools.count(1)
 
+# bcrypt is deliberately slow; hash the shared test password once, not per user.
+_PASSWORD_HASH = hash_password(DEFAULT_PASSWORD)
+
 # Required extra columns per actor type (mirrors auth/schemas.py).
 _TYPE_DEFAULTS: dict[str, dict] = {
     "citizen": {},
@@ -30,7 +33,7 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
     n = next(_counter)
     data = {
         "email": f"user{n}-{uuid.uuid4().hex[:6]}@test.com",
-        "password_hash": hash_password(DEFAULT_PASSWORD),
+        "password_hash": _PASSWORD_HASH,
         "full_name": f"Test User {n}",
         "phone": "3001234567",
         "id_type": "CC",
@@ -74,3 +77,23 @@ def stock(
     )
     db.commit()
     return item
+
+
+# Every actor kind exercised by the authorization matrix: kind -> (user_type, role_code).
+ACTORS: dict[str, tuple[str, str | None]] = {
+    "citizen": ("citizen", None),
+    "building": ("building", None),
+    "b2b_client": ("b2b_client", None),
+    "recycler": ("recycler", None),
+    "eca_admin": ("eca", "eca_admin"),
+    "eca_operator": ("eca", "eca_operator"),
+    "eca_warehouse": ("eca", "eca_warehouse"),
+    "association_admin": ("association", "association_admin"),
+    "association_operator": ("association", "association_operator"),
+    "route_manager": ("association", "route_manager"),
+}
+
+
+def make_actor(db: Session, kind: str, **overrides) -> User:
+    user_type, role_code = ACTORS[kind]
+    return make_user(db, user_type, role_code=role_code, **overrides)

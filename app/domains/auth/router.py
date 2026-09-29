@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import ensure_can_assign_role
 from app.core.security import (
     bearer_scheme,
     create_access_token,
     get_current_user,
+    get_optional_user,
     hash_password,
     verify_password,
 )
@@ -50,11 +52,17 @@ def logout(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
-def register(request: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    request: RegisterRequest,
+    db: Session = Depends(get_db),
+    actor: User | None = Depends(get_optional_user),
+):
     data = request.model_dump()
 
     role_code = data.get("role_code")
     if role_code is not None:
+        # Roles are handed out by an organization admin, never self-assigned.
+        ensure_can_assign_role(actor, role_code, data["user_type_code"])
         role = db.query(Role).filter(Role.code == role_code, Role.is_active == True).first()
         if role is None:
             raise HTTPException(

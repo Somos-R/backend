@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import ensure_role
 
 bearer_scheme = HTTPBearer()
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def hash_password(plain: str) -> str:
@@ -33,10 +35,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-):
+def _user_from_token(token: str, db: Session):
     invalid = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Token inválido o expirado",
@@ -44,7 +43,7 @@ def get_current_user(
     )
     try:
         payload = jwt.decode(
-            credentials.credentials,
+            token,
             settings.secret_key,
             algorithms=[settings.algorithm],
         )
@@ -68,3 +67,31 @@ def get_current_user(
     if user is None:
         raise invalid
     return user
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    return _user_from_token(credentials.credentials, db)
+
+
+def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
+    db: Session = Depends(get_db),
+):
+    """The authenticated user, or None for anonymous callers. A bad token is still a 401."""
+    if credentials is None:
+        return None
+    return _user_from_token(credentials.credentials, db)
+
+
+def require_roles(*roles: str):
+    """Dependency factory: 403 unless the caller holds one of `roles`."""
+    allowed = frozenset(roles)
+
+    def dependency(user=Depends(get_current_user)):
+        ensure_role(user, allowed)
+        return user
+
+    return dependency

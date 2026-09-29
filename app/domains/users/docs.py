@@ -7,13 +7,18 @@ Retorna el listado paginado de todos los usuarios registrados, con su perfil com
 
 Requiere autenticación con **Bearer token**.
 
+**Quién puede:** personal de asociación o ECA (`association_admin`, `association_operator`, `route_manager`, `eca_admin`, `eca_operator`, `eca_warehouse`). El alcance depende del rol:
+- `association_admin`: todos los tipos de usuario.
+- `eca_admin`: usuarios `eca` y recicladores.
+- Resto del personal: solo recicladores (403 si pide otro tipo).
+
 **Filtros disponibles (query params):**
 - `user_type_code` — filtra por tipo de usuario (`citizen`, `building`, `recycler`, `eca`, `association`, `b2b_client`)
-- `role_code` — filtra por rol (`eca_admin`, `eca_operator`, `association_admin`)
+- `role_code` — filtra por rol (ver `GET /catalogs/roles`)
 - `verification_status` — filtra recicladores por estado (`pending`, `verified`, `rejected`)
 
 **Paginación:**
-- `limit` — cantidad de registros por página (default: `20`, máx: `100`)
+- `limit` — cantidad de registros por página (default: `20`, máx: `500`)
 - `offset` — registros a saltar (default: `0`)
 
 La respuesta incluye `total` con el conteo total antes de aplicar paginación.
@@ -36,6 +41,8 @@ GET_USER_DOCS: dict[str, Any] = {
 Retorna el perfil completo de un usuario por su UUID.
 
 Requiere autenticación con **Bearer token**.
+
+**Quién puede:** el propio usuario, o personal con permiso de consulta sobre ese tipo de usuario (mismo alcance que `GET /users`). Cualquier otro caso responde 403.
 
 Los campos mostrados varían según el `user_type_code` del usuario:
 - `citizen` / `building` → `address`, `latitude`, `longitude`
@@ -71,6 +78,8 @@ UPDATE_RECYCLER_STATUS_DOCS: dict[str, Any] = {
 Actualiza el estado de verificación de un reciclador. Solo aplica para usuarios de tipo `recycler`.
 
 Requiere autenticación con **Bearer token**.
+
+**Quién puede:** `association_admin` y `association_operator`.
 
 **Estados disponibles:**
 - `pending` → Pendiente (estado inicial al registrar)
@@ -123,6 +132,12 @@ Actualiza parcialmente el perfil de un usuario. Solo se modifican los campos
 que se incluyan en el cuerpo de la petición (**PATCH semántico**).
 
 Requiere autenticación con **Bearer token**.
+
+**Quién puede:**
+- El propio usuario, sobre sus datos personales.
+- `association_admin` sobre usuarios `association` y recicladores; `eca_admin` sobre usuarios `eca`.
+
+Los campos `role_code`, `permissions`, `association_id` y `employee_code` solo los puede modificar un administrador de la organización sobre *otro* usuario, nunca sobre sí mismo. El `role_code` debe ser un rol válido para el tipo del usuario destino (`eca_*` para `eca`; `association_*` y `route_manager` para `association`).
 
 **Campos no actualizables por este endpoint:** `email`, `password`, `id_type`,
 `id_number`, `user_type_code`, `verification_status`.
