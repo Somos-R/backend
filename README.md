@@ -330,7 +330,7 @@ Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verificatio
 
 ### Auditoría — `/audit-log`
 
-Solo `association_admin`. `GET /audit-log` lista los eventos de seguridad y de negocio (filtros por acción, actor, objetivo, fechas y `request_id`). Ver `docs/auditoria.md`.
+Solo `association_admin`. `GET /audit-log` lista los eventos de seguridad y de negocio (filtros por acción, actor, objetivo, fechas y `request_id`).
 
 ### Catálogos — `/catalogs`
 

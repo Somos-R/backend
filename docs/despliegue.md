@@ -24,7 +24,7 @@ Guía de lo que hay que configurar para pasar de desarrollo a un servidor real (
 | `RATE_LIMIT_STORAGE_URI` | `redis://…` | Con varios workers/instancias los contadores en memoria son por proceso |
 | `SENTRY_DSN` | `https://…@sentry.io/…` | Sin esto nadie recibe aviso de los errores 500; solo quedan en el log |
 | `SENTRY_RELEASE` | SHA del commit | Permite saber qué despliegue introdujo un error |
-| `METRICS_TOKEN` | 16+ caracteres aleatorios | Habilita `/metrics` para Prometheus (sin él el endpoint no existe). Ver `docs/observabilidad.md` |
+| `METRICS_TOKEN` | 16+ caracteres aleatorios | Habilita `/metrics` para Prometheus (sin él el endpoint no existe). |
 
 **Ajuste**
 
@@ -58,7 +58,7 @@ Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade he
 
 ## 4b. Registro de auditoría en producción
 
-La tabla `audit_log` rechaza `UPDATE` y `DELETE` con un trigger, pero el dueño de la tabla aún puede hacer `TRUNCATE` o `DROP`. En producción, **la aplicación no debe conectarse con el rol dueño**: usa un rol para las migraciones y otro, con permisos mínimos, para la app (`SELECT`/`INSERT` sobre `audit_log`, sin `TRUNCATE`, `DROP` ni `ALTER`). Define además la política de retención (ver `docs/auditoria.md`).
+La tabla `audit_log` rechaza `UPDATE` y `DELETE` con un trigger, pero el dueño de la tabla aún puede hacer `TRUNCATE` o `DROP`. En producción, **la aplicación no debe conectarse con el rol dueño**: usa un rol para las migraciones y otro, con permisos mínimos, para la app (`SELECT`/`INSERT` sobre `audit_log`, sin `TRUNCATE`, `DROP` ni `ALTER`). Define además la política de retención.
 
 ## 5. Tareas programadas
 
