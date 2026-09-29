@@ -1,0 +1,32 @@
+# Dependabot opens PRs for updates; security updates always come as their own PR, immediately.
+# Routine version bumps are grouped weekly so they do not bury the reviewers.
+version: 2
+
+updates:
+  # Python dependencies (poetry.lock)
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  # Base image of Dockerfile / Dockerfile.prod
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+
+  # Actions in .github/workflows (they are pinned by commit SHA)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -90,7 +90,7 @@ class TestActivation:
         _, token = _verified_recycler_token(client_as, association_admin, db, outbox)
         assert client.post("/auth/activate", json={
             "token": token, "password": NEW_PASSWORD}).status_code == 200
-        again = client.post("/auth/activate", json={"token": token, "password": "Otra-Clave-2026"})
+        again = client.post("/auth/activate", json={"token": token, "password": "Otra-Clave-2026"})  # gitleaks:allow  (fake test password)
         assert again.status_code == 400
 
     def test_weak_password_does_not_burn_the_link(
@@ -157,7 +157,7 @@ class TestPasswordReset:
         token = token_from(outbox[0])
         client.post("/auth/reset-password", json={"token": token, "password": NEW_PASSWORD})
         assert client.post("/auth/reset-password", json={
-            "token": token, "password": "Otra-Clave-2026"}).status_code == 400
+            "token": token, "password": "Otra-Clave-2026"}).status_code == 400  # gitleaks:allow  (fake test password)
 
     def test_unknown_email_gets_the_same_answer_and_no_email(self, client, db, outbox):
         known = factories.make_user(db, "citizen")
