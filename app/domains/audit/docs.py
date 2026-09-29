@@ -25,6 +25,8 @@ El registro es de solo lectura y de solo anexar: la base de datos rechaza modifi
 **Filtros:** `action`, `outcome`, `actor_id`, `target_type`, `target_id`, `request_id`, `since` y `until`
 (fechas ISO 8601). Paginación con `limit` (1–200, por defecto 50) y `offset`.
 
+**Alcance por organización:** solo se listan los eventos de las personas de **tu organización** y lo intentado contra sus cuentas; nunca los de otras organizaciones. Sin organización, la lista está vacía.
+
 Requiere autenticación con **Bearer token**.
 """,
     "responses": {

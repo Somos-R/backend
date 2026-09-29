@@ -6,19 +6,22 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.permissions import (
     ORG_ADMINS,
     PRIVILEGED_USER_FIELDS,
+    STAFF_TYPES,
     USERS_DIRECTORY,
     ensure_can_assign_role,
     forbidden,
     has_role,
+    in_scope,
     manageable_user_types,
     visible_user_types,
 )
@@ -45,6 +48,16 @@ def _search_term(q: str | None) -> str | None:
     return f"%{escaped}%"
 
 
+def _in_scope_clause(actor: User) -> ColumnElement[bool]:
+    """SQL twin of `in_scope`: people who are not staff, plus the staff of the actor's own organization."""
+    if actor.organization_id is None:
+        return User.user_type_code.not_in(STAFF_TYPES)
+    return or_(
+        User.user_type_code.not_in(STAFF_TYPES),
+        and_(User.user_type_code.in_(STAFF_TYPES), User.organization_id == actor.organization_id),
+    )
+
+
 def _user_not_found() -> ApiError:
     return ApiError("user_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado")
 
@@ -64,7 +77,7 @@ def list_users(
     if user_type_code and user_type_code not in visible:
         raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
 
-    query = select(User).where(User.user_type_code.in_(visible))
+    query = select(User).where(User.user_type_code.in_(visible), _in_scope_clause(actor))
     if user_type_code:
         query = query.where(User.user_type_code == user_type_code)
     if role_code:
@@ -90,6 +103,9 @@ def get_user(db: Session, actor: User, user_id: uuid.UUID) -> User:
         raise _user_not_found()
     if not is_self and user.user_type_code not in visible_user_types(actor):
         raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
+    # Someone else's staff answers like a missing user: it does not confirm they exist.
+    if not is_self and not in_scope(actor, user):
+        raise _user_not_found()
     return user
 
 
@@ -142,6 +158,8 @@ def update_user(db: Session, actor: User, user_id: uuid.UUID, request: UpdateUse
 
     if not is_self and user.user_type_code not in manageable_user_types(actor):
         raise forbidden("No puedes editar usuarios de ese tipo", "user_type_not_editable")
+    if not is_self and not in_scope(actor, user):
+        raise _user_not_found()
 
     privileged = request.model_fields_set & PRIVILEGED_USER_FIELDS
     if privileged:

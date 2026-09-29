@@ -3,7 +3,9 @@ from typing import Any
 LIST_USERS_DOCS: dict[str, Any] = {
     "summary": "Listar usuarios",
     "description": """
-Retorna el listado paginado de todos los usuarios registrados, con su perfil completo.
+Retorna el listado paginado de los usuarios que el rol puede consultar, con su perfil completo.
+
+**Alcance por organización:** el personal de ECA y Asociación solo aparece para quienes pertenecen a **su misma organización**; el de otras organizaciones nunca aparece (ni en el listado, ni en `total`, ni en la búsqueda `q`). Quien no tiene organización no ve a nadie del personal.
 
 Requiere autenticación con **Bearer token**.
 

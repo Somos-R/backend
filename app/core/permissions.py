@@ -113,6 +113,27 @@ def ensure_capability(user, capability: str) -> None:
         raise forbidden()
 
 
+# Actor types whose people work for an organization (`users.organization_id`).
+STAFF_TYPES = frozenset({"eca", "association"})
+
+
+def same_organization(actor, target) -> bool:
+    """Both belong to the same organization. An account with none is in no organization: fail closed."""
+    return actor.organization_id is not None and actor.organization_id == target.organization_id
+
+
+def in_scope(actor, target) -> bool:
+    """Whether `actor` may reach `target` at all, before asking what they may do with it.
+
+    The staff of an ECA or Association belong to exactly one organization and are reachable only from
+    it: one organization's admin never sees or edits another's people. Everyone else (recyclers,
+    citizens, buildings, B2B clients) is not tied to an organization yet.
+    """
+    if target.user_type_code in STAFF_TYPES:
+        return same_organization(actor, target)
+    return True
+
+
 def ensure_role(user, roles: frozenset[str]) -> None:
     if not has_role(user, roles):
         raise forbidden()

@@ -451,11 +451,14 @@ class TestBusinessEvents:
 class TestAuditEndpoint:
     @pytest.fixture
     def seeded(self, db):
-        actor_a, actor_b = uuid.uuid4(), uuid.uuid4()
+        # The events belong to people of the reader's organization (the default one of the factories).
+        actor_a = factories.make_user(db, "association", role_code="association_operator").id
+        actor_b = factories.make_user(db, "association", role_code="association_operator").id
         base = datetime(2026, 3, 10, 12, 0, tzinfo=timezone.utc)
         data = [
             ("auth.login", "success", actor_a, "user", "u1", "req-1", 0),
-            ("auth.login_failed", "failure", None, "user", "u1", "req-2", 1),
+            # a failed login has no actor: it reaches the organization through the account it targeted
+            ("auth.login_failed", "failure", None, "user", str(actor_a), "req-2", 1),
             ("weighing.validated", "success", actor_b, "weighing", "w1", "req-3", 2),
             ("weighing.paid", "success", actor_b, "weighing", "w1", "req-4", 3),
             ("auth.login", "success", actor_a, "user", "u2", "req-5", 4),
@@ -480,7 +483,7 @@ class TestAuditEndpoint:
         ("?action=auth.login", {"req-1", "req-5"}),
         ("?outcome=failure", {"req-2"}),
         ("?target_type=weighing", {"req-3", "req-4"}),
-        ("?target_id=u1", {"req-1", "req-2"}),
+        ("?target_id=u1", {"req-1"}),
         ("?request_id=req-3", {"req-3"}),
         ("?action=auth.login&target_id=u2", {"req-5"}),
         ("?action=nada", set()),
@@ -520,12 +523,15 @@ class TestAuditEndpoint:
         for method in ("post", "put", "patch", "delete"):
             assert getattr(c, method)("/audit-log").status_code == 405
 
-    def test_a_real_workflow_is_readable_end_to_end(self, client_as, eca_admin, association_admin, recycler,
-                                                    warehouse, db):
-        w = _weighing(client_as(eca_admin), recycler, warehouse)
-        r = self._get(client_as, association_admin, f"?target_id={w['id']}")
-        assert [i["action"] for i in r.json()["items"]] == [Action.WEIGHING_CREATED]
-        assert r.json()["items"][0]["actor_role"] == "eca_admin"
+    def test_a_real_workflow_is_readable_end_to_end(self, client_as, association_admin, db):
+        # An operator of the same organization verifies a recycler; their admin reads it in the trail.
+        operator = factories.make_user(db, "association", role_code="association_operator")
+        pending = factories.make_user(db, "recycler", verification_status=VerificationStatus.pending)
+        r = client_as(operator).patch(f"/users/{pending.id}/verification-status", json={"status": "verified"})
+        assert r.status_code == 200, r.text
+        trail = self._get(client_as, association_admin, f"?target_id={pending.id}").json()["items"]
+        assert [i["action"] for i in trail] == [Action.RECYCLER_VERIFIED]
+        assert trail[0]["actor_role"] == "association_operator"
 
 
 def test_the_dependency_override_does_not_leak_between_tests():
