@@ -7,10 +7,20 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user, hash_password
-from app.domains.users.docs import GET_USER_DOCS, LIST_USERS_DOCS, UPDATE_RECYCLER_STATUS_DOCS, UPDATE_USER_DOCS
+from app.domains.users.docs import (
+    GET_USER_DOCS,
+    LIST_USERS_DOCS,
+    UPDATE_RECYCLER_STATUS_DOCS,
+    UPDATE_USER_DOCS,
+)
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
-from app.domains.users.schemas import UpdateRecyclerStatusRequest, UpdateUserRequest, UserDetailResponse, UserListResponse
+from app.domains.users.schemas import (
+    UpdateRecyclerStatusRequest,
+    UpdateUserRequest,
+    UserDetailResponse,
+    UserListResponse,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 

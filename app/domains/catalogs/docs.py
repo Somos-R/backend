@@ -1,4 +1,6 @@
-DOCUMENT_TYPES_DOCS = {
+from typing import Any
+
+DOCUMENT_TYPES_DOCS: dict[str, Any] = {
     "summary": "Listar tipos de documento",
     "description": """
 Retorna los tipos de documento de identidad disponibles para el registro de usuarios.
@@ -17,7 +19,7 @@ No requiere autenticación.
 """,
 }
 
-ROLES_DOCS = {
+ROLES_DOCS: dict[str, Any] = {
     "summary": "Listar roles disponibles",
     "description": """
 Retorna los roles activos que pueden asignarse a usuarios de tipo `eca` o `association`.

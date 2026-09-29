@@ -2,12 +2,17 @@ import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.domains.inventory.models import Material, Warehouse
+    from app.domains.users.models import User
 
 
 class WeighingStatus(str, enum.Enum):
@@ -34,10 +39,10 @@ class Weighing(Base):
     created_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    recycler:  Mapped["User"] = relationship("User", foreign_keys=[recycler_id])  # type: ignore[name-defined]
-    validator: Mapped["User | None"] = relationship("User", foreign_keys=[validated_by])  # type: ignore[name-defined]
-    material:  Mapped["Material"] = relationship("Material")  # type: ignore[name-defined]
-    warehouse: Mapped["Warehouse"] = relationship("Warehouse")  # type: ignore[name-defined]
+    recycler:  Mapped["User"] = relationship("User", foreign_keys=[recycler_id])
+    validator: Mapped["User | None"] = relationship("User", foreign_keys=[validated_by])
+    material:  Mapped["Material"] = relationship("Material")
+    warehouse: Mapped["Warehouse"] = relationship("Warehouse")
 
     @property
     def total_value(self) -> Decimal:

@@ -4,8 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from app.domains.weighings.models import WeighingStatus
 from app.domains.inventory.schemas import MaterialResponse, WarehouseResponse
+from app.domains.weighings.models import WeighingStatus
 
 
 class RecyclerSummary(BaseModel):

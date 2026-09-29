@@ -17,6 +17,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # 0001 was regenerated later and already creates this column, so on a fresh
+    # database there is nothing left to do. Only act on databases that still
+    # lack it (created from the old 0001).
+    columns = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("users")}
+    if "verification_status" in columns:
+        return
+
     op.execute("DROP TYPE IF EXISTS verificationstatus")
     op.execute("CREATE TYPE verificationstatus AS ENUM ('pending', 'verified', 'rejected')")
     op.add_column(

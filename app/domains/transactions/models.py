@@ -2,12 +2,17 @@ import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.domains.inventory.models import Material, Warehouse
+    from app.domains.users.models import User
 
 
 class TransactionType(str, enum.Enum):
@@ -47,10 +52,10 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    material:  Mapped["Material"]      = relationship("Material")         # type: ignore[name-defined]
-    warehouse: Mapped["Warehouse"]     = relationship("Warehouse")        # type: ignore[name-defined]
-    recycler:  Mapped["User | None"]   = relationship("User", foreign_keys=[recycler_id])   # type: ignore[name-defined]
-    creator:   Mapped["User"]          = relationship("User", foreign_keys=[created_by])    # type: ignore[name-defined]
+    material:  Mapped["Material"]      = relationship("Material")       
+    warehouse: Mapped["Warehouse"]     = relationship("Warehouse")      
+    recycler:  Mapped["User | None"]   = relationship("User", foreign_keys=[recycler_id]) 
+    creator:   Mapped["User"]          = relationship("User", foreign_keys=[created_by])  
 
     @property
     def total_value(self) -> Decimal:

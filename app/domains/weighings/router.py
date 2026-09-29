@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.users.models import User
+from app.domains.weighings import service as weighing_service
 from app.domains.weighings.models import Weighing, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
@@ -16,7 +17,6 @@ from app.domains.weighings.schemas import (
     WeighingResponse,
     WeighingStatsResponse,
 )
-from app.domains.weighings import service as weighing_service
 
 router = APIRouter(prefix="/weighings", tags=["weighings"])
 
