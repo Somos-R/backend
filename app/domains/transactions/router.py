@@ -24,7 +24,7 @@ from app.domains.transactions.models import (
     TransactionType,
 )
 from app.domains.transactions.schemas import (
-    CreateVentaRequest,
+    CreateSaleRequest,
     TransactionListResponse,
     TransactionResponse,
     TransactionStatsResponse,
@@ -60,7 +60,7 @@ def list_transactions(
             selectinload(Transaction.warehouse),
             selectinload(Transaction.recycler),
         )
-        .order_by(Transaction.fecha.desc(), Transaction.id)
+        .order_by(Transaction.occurred_at.desc(), Transaction.id)
         .offset(offset)
         .limit(limit)
         .all()
@@ -76,7 +76,7 @@ def transaction_stats(
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-    this_month = Transaction.fecha >= start
+    this_month = Transaction.occurred_at >= start
 
     per_type = {
         tx_type: (count, kg, value)
@@ -84,32 +84,32 @@ def transaction_stats(
             Transaction.type,
             func.count(Transaction.id),
             func.coalesce(func.sum(Transaction.kg), 0),
-            func.coalesce(func.sum(Transaction.kg * Transaction.precio_kg), 0),
+            func.coalesce(func.sum(Transaction.kg * Transaction.price_per_kg), 0),
         ).filter(this_month).group_by(Transaction.type).all()
     }
     pending = (
         db.query(func.count(Transaction.id))
-        .filter(this_month, Transaction.status == TransactionStatus.pendiente)
+        .filter(this_month, Transaction.status == TransactionStatus.pending)
         .scalar()
     )
 
     empty = (0, Decimal("0"), Decimal("0"))
-    compras = per_type.get(TransactionType.compra, empty)
-    ventas = per_type.get(TransactionType.venta, empty)
+    purchases = per_type.get(TransactionType.purchase, empty)
+    sales = per_type.get(TransactionType.sale, empty)
     return TransactionStatsResponse(
-        total_compras_month  = compras[0],
-        total_ventas_month   = ventas[0],
-        total_kg_compras     = compras[1],
-        total_kg_ventas      = ventas[1],
-        total_value_compras  = compras[2],
-        total_value_ventas   = ventas[2],
+        total_purchases_month  = purchases[0],
+        total_sales_month   = sales[0],
+        total_kg_purchases     = purchases[1],
+        total_kg_sales      = sales[1],
+        total_value_purchases  = purchases[2],
+        total_value_sales   = sales[2],
         pending_count        = pending,
     )
 
 
 @router.post("", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
-def create_venta(
-    request:      CreateVentaRequest,
+def create_sale(
+    request:      CreateSaleRequest,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(require_roles(*TRANSACTIONS_WRITE)),
 ):
@@ -118,12 +118,12 @@ def create_venta(
     if not db.get(Warehouse, request.warehouse_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
 
-    tx = tx_service.create_venta(
+    tx = tx_service.create_sale(
         db=db,
         material_code=request.material_code,
         warehouse_id=request.warehouse_id,
         kg=request.kg,
-        precio_kg=request.precio_kg,
+        price_per_kg=request.price_per_kg,
         created_by=current_user.id,
         buyer_name=request.buyer_name,
         buyer_nit=request.buyer_nit,
@@ -131,8 +131,8 @@ def create_venta(
     )
     audit.record(
         db, Action.TRANSACTION_CREATED, actor=current_user, target_type="transaction", target_id=tx.id,
-        details={"type": "venta", "material": request.material_code, "kg": str(request.kg),
-                 "precio_kg": str(request.precio_kg)})
+        details={"type": "sale", "material": request.material_code, "kg": str(request.kg),
+                 "price_per_kg": str(request.price_per_kg)})
     db.commit()
     db.refresh(tx)
     return tx
@@ -158,7 +158,7 @@ def update_status(
     actor:          User    = Depends(get_current_user),
 ):
     # Paying a purchase moves money; cancelling/delivering moves stock.
-    ensure_role(actor, PAYMENTS if request.status == TransactionStatus.pagado else TRANSACTIONS_WRITE)
+    ensure_role(actor, PAYMENTS if request.status == TransactionStatus.paid else TRANSACTIONS_WRITE)
 
     # FOR UPDATE: two concurrent cancels must not both restore the stock.
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).with_for_update().first()
@@ -167,25 +167,25 @@ def update_status(
 
     previous = tx.status.value
 
-    if request.status == TransactionStatus.cancelado:
+    if request.status == TransactionStatus.cancelled:
         tx_service.cancel_transaction(db, tx)
-    elif request.status == TransactionStatus.entregado:
-        tx_service.mark_entregado(db, tx)
-    elif request.status == TransactionStatus.pagado:
-        if tx.type != TransactionType.compra or tx.status != TransactionStatus.pendiente:
+    elif request.status == TransactionStatus.delivered:
+        tx_service.mark_delivered(db, tx)
+    elif request.status == TransactionStatus.paid:
+        if tx.type != TransactionType.purchase or tx.status != TransactionStatus.pending:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición no válida")
-        tx.status = TransactionStatus.pagado
+        tx.status = TransactionStatus.paid
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no soportada")
 
     audit.record(
         db,
-        {TransactionStatus.cancelado: Action.TRANSACTION_CANCELLED,
-         TransactionStatus.entregado: Action.TRANSACTION_DELIVERED,
-         TransactionStatus.pagado: Action.TRANSACTION_PAID}[request.status],
+        {TransactionStatus.cancelled: Action.TRANSACTION_CANCELLED,
+         TransactionStatus.delivered: Action.TRANSACTION_DELIVERED,
+         TransactionStatus.paid: Action.TRANSACTION_PAID}[request.status],
         actor=actor, target_type="transaction", target_id=tx.id,
         details={"from": previous, "type": tx.type.value, "material": tx.material_code,
-                 "kg": str(tx.kg), "precio_kg": str(tx.precio_kg)})
+                 "kg": str(tx.kg), "price_per_kg": str(tx.price_per_kg)})
     db.commit()
     db.refresh(tx)
     return tx

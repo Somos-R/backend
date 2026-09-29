@@ -27,9 +27,9 @@ class InventoryItemResponse(BaseModel):
     warehouse_id:        uuid.UUID
     stock_kg:            Decimal
     stock_min_kg:        Decimal
-    precio_kg:           Decimal
-    fecha_actualizacion: datetime
-    estado:              str
+    price_per_kg:           Decimal
+    updated_at: datetime
+    status:              str
     total_value:         Decimal
     material:            MaterialResponse
     warehouse:           WarehouseResponse
@@ -50,4 +50,4 @@ class InventoryStatsResponse(BaseModel):
 
 class UpdateInventoryItemRequest(BaseModel):
     stock_min_kg: Decimal | None = None
-    precio_kg:    Decimal | None = None
+    price_per_kg:    Decimal | None = None

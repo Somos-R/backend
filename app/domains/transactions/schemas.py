@@ -24,7 +24,7 @@ class TransactionResponse(BaseModel):
     material_code: str
     warehouse_id:  uuid.UUID
     kg:            Decimal
-    precio_kg:     Decimal
+    price_per_kg:     Decimal
     total_value:   Decimal
 
     recycler_id:   uuid.UUID | None
@@ -33,7 +33,7 @@ class TransactionResponse(BaseModel):
     buyer_nit:     str | None
     buyer_email:   str | None
 
-    fecha:      datetime
+    occurred_at:      datetime
     created_at: datetime
 
     material:  MaterialResponse
@@ -46,16 +46,16 @@ class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
 
 
-class CreateVentaRequest(BaseModel):
+class CreateSaleRequest(BaseModel):
     material_code: str
     warehouse_id:  uuid.UUID
     kg:            Decimal
-    precio_kg:     Decimal
+    price_per_kg:     Decimal
     buyer_name:    str | None = None
     buyer_nit:     str | None = None
     buyer_email:   str | None = None
 
-    @field_validator("kg", "precio_kg")
+    @field_validator("kg", "price_per_kg")
     @classmethod
     def must_be_positive(cls, v: Decimal) -> Decimal:
         if v <= 0:
@@ -68,10 +68,10 @@ class UpdateTransactionStatusRequest(BaseModel):
 
 
 class TransactionStatsResponse(BaseModel):
-    total_compras_month:  int
-    total_ventas_month:   int
-    total_kg_compras:     Decimal
-    total_kg_ventas:      Decimal
-    total_value_compras:  Decimal
-    total_value_ventas:   Decimal
+    total_purchases_month:  int
+    total_sales_month:   int
+    total_kg_purchases:     Decimal
+    total_kg_sales:      Decimal
+    total_value_purchases:  Decimal
+    total_value_sales:   Decimal
     pending_count:        int
