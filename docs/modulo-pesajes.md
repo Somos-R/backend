@@ -58,8 +58,12 @@ Crea un pesaje en estado `pendiente`.
 
 Validaciones:
 - El `recycler_id` debe existir y tener `user_type_code = "recycler"`
+- **El reciclador debe estar verificado y con la cuenta activa** (`verification_status = verified` e `is_active`). Si no, responde `400` ("El reciclador no está verificado o su cuenta está desactivada") y no se crea el pesaje ni se registra evento de auditoría
 - El `material_code` debe existir en catálogo
 - El `warehouse_id` debe existir
+
+
+La misma regla se comprueba **otra vez al validar** (`validado`): un reciclador puede dejar de estar verificado o ser desactivado entre el registro y la validación, y validar genera una compra a su nombre. En ese caso la validación responde `400` y no mueve stock ni crea la compra. Rechazar un pesaje sigue permitido.
 
 #### `GET /weighings/{id}`
 Obtiene un pesaje por UUID.
