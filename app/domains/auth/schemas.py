@@ -213,6 +213,10 @@ class ChangePasswordRequest(BaseModel):
     new_password: Password
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=10, max_length=200)
+
+
 class MessageResponse(BaseModel):
     message: str
 
@@ -238,3 +242,5 @@ class UserResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    expires_in: int  # lifetime of the access token, in seconds
+    refresh_token: str

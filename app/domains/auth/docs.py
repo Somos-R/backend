@@ -92,8 +92,11 @@ LOGIN_DOCS: dict[str, Any] = {
     "description": """
 Valida las credenciales del usuario y retorna un **JWT Bearer token**.
 
-El token expira en **30 minutos** y debe enviarse en el header de cada
-petición protegida:
+Retorna un `access_token` de corta duración (`expires_in`, en segundos) y un `refresh_token`
+de un solo uso. Cuando el access token expire, se renueva con `POST /auth/refresh` sin volver a pedir
+la contraseña. Guarda el refresh token de forma segura (Keychain/Keystore en móvil).
+
+El access token debe enviarse en el header de cada petición protegida:
 
 ```
 Authorization: Bearer <access_token>
@@ -198,6 +201,27 @@ Requiere autenticación con **Bearer token**.
         400: {
             "description": "La contraseña actual es incorrecta",
             "content": {"application/json": {"example": {"detail": "La contraseña actual es incorrecta"}}},
+        },
+    },
+}
+
+REFRESH_DOCS: dict[str, Any] = {
+    "summary": "Renovar sesión",
+    "description": """
+Intercambia un `refresh_token` por un nuevo par `access_token` + `refresh_token`. **Cada refresh token
+sirve una sola vez**: el anterior queda invalidado (rotación) y hay que guardar el nuevo.
+
+Si se presenta un refresh token que ya fue usado, se asume que fue copiado y se **revocan todas las
+sesiones de ese inicio de sesión**; el usuario debe volver a iniciar sesión. También se rechaza si la
+cuenta fue desactivada, el reciclador dejó de estar verificado, la sesión se cerró (`POST /auth/logout`) o
+la contraseña cambió. Los refresh tokens duran 30 días. No requiere `Authorization`.
+""",
+    "responses": {
+        **TOO_MANY_REQUESTS,
+        401: {
+            "description": "Refresh token inválido, usado, revocado o expirado",
+            "content": {"application/json": {"example": {
+                "detail": "El token de renovación es inválido o expiró. Inicia sesión de nuevo"}}},
         },
     },
 }
