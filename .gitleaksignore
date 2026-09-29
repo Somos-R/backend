@@ -5,3 +5,4 @@
 # Fake password used in a test that checks passwords are never written to the audit trail.
 d85a6676bcd08b2b24d66d99889603b174f7deda:tests/test_audit.py:generic-api-key:219
 484930931f6a6fa88569a4c9b3077ddb9d1af97f:tests/test_invitations.py:generic-api-key:141
+bbc6683c256e70ff051afad55e5a5b0a45d82bca:tests/test_admin_users.py:generic-api-key:184
