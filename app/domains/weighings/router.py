@@ -2,11 +2,12 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.database import get_db
 from app.core.errors import ApiError
+from app.core.pagination import paginate
 from app.core.permissions import (
     PAYMENTS,
     WEIGHINGS_CREATE,
@@ -56,28 +57,24 @@ def list_weighings(
             raise forbidden()
         recycler_id = actor.id
 
-    query = db.query(Weighing)
+    query = select(Weighing)
 
     if recycler_id:
-        query = query.filter(Weighing.recycler_id == recycler_id)
+        query = query.where(Weighing.recycler_id == recycler_id)
     if material_code:
-        query = query.filter(Weighing.material_code == material_code)
+        query = query.where(Weighing.material_code == material_code)
     if warehouse_id:
-        query = query.filter(Weighing.warehouse_id == warehouse_id)
+        query = query.where(Weighing.warehouse_id == warehouse_id)
     if status_:
-        query = query.filter(Weighing.status == status_)
+        query = query.where(Weighing.status == status_)
 
-    total    = query.count()
-    weighings = (
-        query.options(
+    total, weighings = paginate(
+        db, query, Weighing.occurred_at.desc(), Weighing.id, limit=limit, offset=offset,
+        options=(
             selectinload(Weighing.recycler),
             selectinload(Weighing.material),
             selectinload(Weighing.warehouse),
-        )
-        .order_by(Weighing.occurred_at.desc(), Weighing.id)
-        .offset(offset)
-        .limit(limit)
-        .all()
+        ),
     )
     return WeighingListResponse(total=total, items=weighings)
 
@@ -92,17 +89,18 @@ def weighing_stats(
 
     this_month = Weighing.occurred_at >= start
 
-    count_month, total_kg = db.query(
-        func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)
-    ).filter(this_month).one()
-    pending = db.query(func.count(Weighing.id)).filter(Weighing.status == WeighingStatus.pending_validation).scalar()
-    by_material = (
-        db.query(Weighing.material_code, func.sum(Weighing.kg))
-        .filter(this_month)
+    count_month, total_kg = db.execute(
+        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(this_month)
+    ).one()
+    pending = db.scalar(
+        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation)
+    )
+    by_material = db.execute(
+        select(Weighing.material_code, func.sum(Weighing.kg))
+        .where(this_month)
         .group_by(Weighing.material_code)
         .order_by(Weighing.material_code)
-        .all()
-    )
+    ).all()
 
     return WeighingStatsResponse(
         total_weighings_month=count_month,
@@ -171,7 +169,7 @@ def update_weighing_status(
     ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.paid else WEIGHINGS_REVIEW)
 
     # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
-    weighing = db.query(Weighing).filter(Weighing.id == weighing_id).with_for_update().first()
+    weighing = db.scalars(select(Weighing).where(Weighing.id == weighing_id).with_for_update()).first()
     if not weighing:
         raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 

@@ -2,9 +2,11 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.pagination import paginate
 from app.core.permissions import AUDIT_READ
 from app.core.security import require_roles
 from app.domains.audit.docs import LIST_AUDIT_DOCS
@@ -30,24 +32,23 @@ def list_audit_log(
     db: Session = Depends(get_db),
     _: User = Depends(require_roles(*AUDIT_READ)),
 ):
-    query = db.query(AuditLog)
+    query = select(AuditLog)
     if action:
-        query = query.filter(AuditLog.action == action)
+        query = query.where(AuditLog.action == action)
     if outcome:
-        query = query.filter(AuditLog.outcome == outcome)
+        query = query.where(AuditLog.outcome == outcome)
     if actor_id:
-        query = query.filter(AuditLog.actor_id == actor_id)
+        query = query.where(AuditLog.actor_id == actor_id)
     if target_type:
-        query = query.filter(AuditLog.target_type == target_type)
+        query = query.where(AuditLog.target_type == target_type)
     if target_id:
-        query = query.filter(AuditLog.target_id == target_id)
+        query = query.where(AuditLog.target_id == target_id)
     if request_id:
-        query = query.filter(AuditLog.request_id == request_id)
+        query = query.where(AuditLog.request_id == request_id)
     if since:
-        query = query.filter(AuditLog.occurred_at >= since)
+        query = query.where(AuditLog.occurred_at >= since)
     if until:
-        query = query.filter(AuditLog.occurred_at <= until)
+        query = query.where(AuditLog.occurred_at <= until)
 
-    total = query.count()
-    items = query.order_by(AuditLog.occurred_at.desc(), AuditLog.id).offset(offset).limit(limit).all()
+    total, items = paginate(db, query, AuditLog.occurred_at.desc(), AuditLog.id, limit=limit, offset=offset)
     return AuditLogListResponse(total=total, limit=limit, offset=offset, items=items)

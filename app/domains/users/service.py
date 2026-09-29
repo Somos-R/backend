@@ -6,10 +6,12 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.core.pagination import paginate
 from app.core.permissions import (
     ORG_ADMINS,
     PRIVILEGED_USER_FIELDS,
@@ -46,17 +48,15 @@ def list_users(
     if user_type_code and user_type_code not in visible:
         raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
 
-    query = db.query(User).filter(User.user_type_code.in_(visible))
+    query = select(User).where(User.user_type_code.in_(visible))
     if user_type_code:
-        query = query.filter(User.user_type_code == user_type_code)
+        query = query.where(User.user_type_code == user_type_code)
     if role_code:
-        query = query.filter(User.role_code == role_code)
+        query = query.where(User.role_code == role_code)
     if verification_status:
-        query = query.filter(User.verification_status == verification_status)
+        query = query.where(User.verification_status == verification_status)
 
-    total = query.count()
-    users = query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
-    return total, users
+    return paginate(db, query, User.created_at.desc(), User.id, limit=limit, offset=offset)
 
 
 def get_user(db: Session, actor: User, user_id: uuid.UUID) -> User:

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -25,9 +26,9 @@ class RoleResponse(BaseModel):
 
 @router.get("/document-types", response_model=list[DocumentTypeResponse], **DOCUMENT_TYPES_DOCS)
 def get_document_types(db: Session = Depends(get_db)):
-    return db.query(DocumentType).filter(DocumentType.is_active == True).all()
+    return db.scalars(select(DocumentType).where(DocumentType.is_active.is_(True))).all()
 
 
 @router.get("/roles", response_model=list[RoleResponse], **ROLES_DOCS)
 def get_roles(db: Session = Depends(get_db)):
-    return db.query(Role).filter(Role.is_active == True).all()
+    return db.scalars(select(Role).where(Role.is_active.is_(True))).all()
