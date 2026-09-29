@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
+from app.core.rate_limit import limiter, rate_limit_exceeded_handler
 from app.domains.auth.router import router as auth_router
 from app.domains.catalogs.router import router as catalogs_router
 from app.domains.inventory.router import router as inventory_router
@@ -13,6 +15,9 @@ app = FastAPI(
     description="Backend API for Somos R recycling platform",
     version="0.1.0",
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
 app.add_middleware(
     CORSMiddleware,

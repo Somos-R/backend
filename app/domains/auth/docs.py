@@ -1,5 +1,13 @@
 from typing import Any
 
+TOO_MANY_REQUESTS: dict[int | str, dict[str, Any]] = {
+    429: {
+        "description": "Demasiadas solicitudes desde esta IP; reintenta en unos minutos (header `Retry-After`)",
+        "content": {"application/json": {"example": {
+            "detail": "Demasiadas solicitudes. Intenta de nuevo en unos minutos"}}},
+    },
+}
+
 REGISTER_DOCS: dict[str, Any] = {
     "summary": "Registrar un nuevo usuario",
     "description": """
@@ -29,6 +37,7 @@ en estado `0` (pendiente) y no puede iniciar sesión hasta ser verificado con `P
 Consulta los valores válidos de `id_type` en `GET /catalogs/document-types`.
 """,
     "responses": {
+        **TOO_MANY_REQUESTS,
         409: {
             "description": "Email o número de documento ya registrado",
             "content": {
@@ -92,10 +101,18 @@ Authorization: Bearer <access_token>
 
 El payload del token contiene `sub` (UUID del usuario) y `user_type`.
 Por seguridad, el error 401 no indica si el email existe o no.
+
+**Protección contra abuso:**
+- Máximo **10 intentos por minuto por IP** (429 al superarlo).
+- Tras **5 fallos consecutivos** la cuenta se bloquea 1 minuto; cada fallo adicional duplica el bloqueo
+  (2, 4, 8… hasta 60 minutos). Un login exitoso o un restablecimiento de contraseña reinician el contador.
+- Mientras la cuenta está bloqueada la respuesta es el mismo 401 de credenciales inválidas, incluso con la
+  contraseña correcta, para no revelar qué cuentas existen ni cuáles están bloqueadas.
 """,
     "responses": {
+        **TOO_MANY_REQUESTS,
         401: {
-            "description": "Credenciales inválidas (email no existe o contraseña incorrecta)",
+            "description": "Credenciales inválidas (email no existe, contraseña incorrecta o cuenta bloqueada temporalmente)",
             "content": {
                 "application/json": {
                     "example": {"detail": "Invalid credentials"}
@@ -127,7 +144,7 @@ contraseña elegida, y deja la cuenta lista para iniciar sesión.
 
 El enlace vence a las 48 horas y solo puede usarse una vez. No requiere autenticación.
 """,
-    "responses": _BAD_LINK,
+    "responses": {**_BAD_LINK, **TOO_MANY_REQUESTS},
 }
 
 VERIFY_EMAIL_DOCS: dict[str, Any] = {
@@ -136,7 +153,7 @@ VERIFY_EMAIL_DOCS: dict[str, Any] = {
 Confirma el correo con el `token` del enlace enviado al registrarse. Marca `email_verified_at`.
 El enlace vence a las 24 horas y solo puede usarse una vez. No requiere autenticación.
 """,
-    "responses": _BAD_LINK,
+    "responses": {**_BAD_LINK, **TOO_MANY_REQUESTS},
 }
 
 RESEND_VERIFICATION_DOCS: dict[str, Any] = {
@@ -154,6 +171,7 @@ Envía un enlace de restablecimiento al correo indicado, si corresponde a una cu
 contraseña. **Siempre responde 200 con el mismo mensaje**, exista o no la cuenta, para no revelar
 qué correos están registrados. El enlace vence a los 60 minutos. No requiere autenticación.
 """,
+    "responses": TOO_MANY_REQUESTS,
 }
 
 RESET_PASSWORD_DOCS: dict[str, Any] = {
@@ -164,7 +182,7 @@ Establece una nueva contraseña con el `token` recibido por correo.
 
 El enlace solo puede usarse una vez. No requiere autenticación.
 """,
-    "responses": _BAD_LINK,
+    "responses": {**_BAD_LINK, **TOO_MANY_REQUESTS},
 }
 
 CHANGE_PASSWORD_DOCS: dict[str, Any] = {
@@ -176,6 +194,7 @@ Cambia la contraseña del usuario autenticado. Requiere la contraseña actual.
 Requiere autenticación con **Bearer token**.
 """,
     "responses": {
+        **TOO_MANY_REQUESTS,
         400: {
             "description": "La contraseña actual es incorrecta",
             "content": {"application/json": {"example": {"detail": "La contraseña actual es incorrecta"}}},

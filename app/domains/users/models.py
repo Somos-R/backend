@@ -37,6 +37,8 @@ class User(Base):
     role_code: Mapped[str | None] = mapped_column(String(20), ForeignKey("roles.code"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True, nullable=False)
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts: Mapped[int] = mapped_column(server_default="0", default=0, nullable=False)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
