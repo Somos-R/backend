@@ -1,14 +1,20 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import settings
+from app.core.context import get_request_id
 from app.core.health import router as health_router
+from app.core.metrics import router as metrics_router
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
+from app.core.sentry import init_sentry
+from app.core.structured_logging import configure_logging
 from app.domains.auth.router import router as auth_router
 from app.domains.catalogs.router import router as catalogs_router
 from app.domains.inventory.router import router as inventory_router
@@ -24,6 +30,9 @@ CORS_HEADERS = ["Authorization", "Content-Type", "Accept"]
 
 def create_app() -> FastAPI:
     """Build the application from the current settings (a function so tests can vary them)."""
+    configure_logging(settings.log_level, settings.use_json_logs)
+    init_sentry(settings)
+
     docs = settings.docs_enabled
     app = FastAPI(
         title="Somos R API",
@@ -40,7 +49,20 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
-    # Middleware added last runs first: host check, then CORS, then the security headers.
+    @app.exception_handler(Exception)
+    async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        """Last resort: log with the request id and answer with an id the user can quote."""
+        request_id = get_request_id()
+        logger.exception(
+            "Unhandled exception on %s %s", request.method, request.url.path,
+            extra={"request_id": request_id, "path": request.url.path})
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Error interno del servidor", "request_id": request_id},
+            headers={REQUEST_ID_HEADER: request_id or ""},
+        )
+
+    # Middleware added last runs first: request context, host check, CORS, then security headers.
     hsts = settings.hsts_max_age if settings.app_env != "dev" else None
     app.add_middleware(SecurityHeadersMiddleware, hsts_max_age=hsts)
     app.add_middleware(
@@ -52,8 +74,10 @@ def create_app() -> FastAPI:
     )
     if settings.allowed_host_list != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+    app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health_router)
+    app.include_router(metrics_router)
     app.include_router(auth_router)
     app.include_router(catalogs_router)
     app.include_router(users_router)

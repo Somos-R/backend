@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Base URL of the web/mobile app; links in emails point here.
     frontend_url: str = "http://localhost:5173"
 
+    # --- Observability ---
+    log_level: str = "INFO"
+    # "auto": JSON lines outside dev (what log platforms parse), readable text in dev.
+    log_format: Literal["auto", "json", "text"] = "auto"
+    # Error tracking. Empty = disabled. Sample rate 0 = errors only, no performance traces.
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 0.0
+    sentry_release: str | None = None  # e.g. the git commit SHA
+    # Bearer token Prometheus must send to /metrics. Empty = the endpoint does not exist.
+    metrics_token: str | None = None
+
     # --- HTTP surface ---
     # Comma-separated browser origins allowed by CORS. Set this per environment.
     cors_origins: str = "http://localhost:5173,http://localhost:3000,https://somosr.com"
@@ -98,6 +109,10 @@ class Settings(BaseSettings):
         return self
 
     @property
+    def use_json_logs(self) -> bool:
+        return self.log_format == "json" or (self.log_format == "auto" and self.app_env != "dev")
+
+    @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
@@ -122,6 +137,10 @@ class Settings(BaseSettings):
             found.append("ALLOWED_HOSTS=* accepts any Host header")
         if any("localhost" in o or "127.0.0.1" in o for o in self.cors_origin_list):
             found.append("CORS_ORIGINS still lists localhost origins")
+        if not self.sentry_dsn:
+            found.append("SENTRY_DSN is empty: unhandled errors are only in the logs, nobody is alerted")
+        if self.metrics_token and len(self.metrics_token) < 16:
+            found.append("METRICS_TOKEN is shorter than 16 characters")
         if self.frontend_url.startswith("http://localhost"):
             found.append("FRONTEND_URL points to localhost: links in emails will not work")
         return found

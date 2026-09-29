@@ -101,8 +101,12 @@ class TestLockout:
 
         locked = _login(client, user.email, DEFAULT_PASSWORD)
         unknown = _login(client, "nadie@test.com", DEFAULT_PASSWORD)
-        assert (locked.status_code, locked.json(), dict(locked.headers)) == (
-            unknown.status_code, unknown.json(), dict(unknown.headers))
+        def comparable(response):
+            # The request id is unique per response by design; everything else must match.
+            headers = {k: v for k, v in response.headers.items() if k != "x-request-id"}
+            return response.status_code, response.json(), headers
+
+        assert comparable(locked) == comparable(unknown)
 
     def test_login_works_again_once_the_lock_expires_and_counters_reset(self, client, db):
         user = factories.make_user(db, "citizen")

@@ -26,7 +26,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH" \
     WEB_CONCURRENCY=2 \
     PORT=8000 \
-    FORWARDED_ALLOW_IPS="*"
+    FORWARDED_ALLOW_IPS="*" \
+    PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
 # The running app never installs anything, so pip/setuptools/wheel are only attack surface (and the
 # source of most base-image CVEs). Remove them from the system Python; the venv's own pip is removed below.
@@ -35,6 +36,7 @@ RUN pip uninstall -y pip setuptools wheel
 # Run as an unprivileged user: a compromised process must not own the filesystem or be root.
 RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
 
+RUN mkdir -p /tmp/prometheus && chown app:app /tmp/prometheus
 COPY --from=builder --chown=app:app /app/.venv ./.venv
 RUN rm -rf ./.venv/lib/python3.11/site-packages/pip ./.venv/lib/python3.11/site-packages/pip-*
 COPY --chown=app:app . .

@@ -3,7 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+import sentry_sdk
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -91,21 +92,33 @@ def _user_from_token(token: str, db: Session):
     return user
 
 
+def _identify(request: Request, user) -> None:
+    """Make the authenticated user's id visible to the access log and to Sentry (id only, no PII)."""
+    request.state.user_id = str(user.id)
+    sentry_sdk.set_user({"id": str(user.id)})
+
+
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
-    return _user_from_token(credentials.credentials, db)
+    user = _user_from_token(credentials.credentials, db)
+    _identify(request, user)
+    return user
 
 
 def get_optional_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(optional_bearer_scheme),
     db: Session = Depends(get_db),
 ):
     """The authenticated user, or None for anonymous callers. A bad token is still a 401."""
     if credentials is None:
         return None
-    return _user_from_token(credentials.credentials, db)
+    user = _user_from_token(credentials.credentials, db)
+    _identify(request, user)
+    return user
 
 
 def require_roles(*roles: str):

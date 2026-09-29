@@ -22,6 +22,9 @@ Guía de lo que hay que configurar para pasar de desarrollo a un servidor real (
 | `EMAIL_BACKEND` | `resend` | Con `console` los enlaces solo salen en el log y nadie los recibe |
 | `EMAIL_API_KEY`, `EMAIL_FROM` | `re_…`, `Somos R <no-reply@somosr.com>` | El dominio del remitente debe estar verificado en Resend |
 | `RATE_LIMIT_STORAGE_URI` | `redis://…` | Con varios workers/instancias los contadores en memoria son por proceso |
+| `SENTRY_DSN` | `https://…@sentry.io/…` | Sin esto nadie recibe aviso de los errores 500; solo quedan en el log |
+| `SENTRY_RELEASE` | SHA del commit | Permite saber qué despliegue introdujo un error |
+| `METRICS_TOKEN` | 16+ caracteres aleatorios | Habilita `/metrics` para Prometheus (sin él el endpoint no existe). Ver `docs/observabilidad.md` |
 
 **Ajuste**
 
@@ -64,4 +67,7 @@ Aplicar las migraciones antes de arrancar la nueva versión: `alembic upgrade he
 - Cabeceras: `curl -I https://<api>/health/live` debe incluir `strict-transport-security`, `x-content-type-options` y `content-security-policy`.
 - Desde el dominio del frontend, una petición con `Origin` distinto al configurado no recibe `access-control-allow-origin`.
 - Registrar un usuario y confirmar que el correo llega.
+- Toda respuesta trae la cabecera `X-Request-ID`, y en el log aparece una línea JSON `app.access` por petición.
+- Si definiste `METRICS_TOKEN`: `curl -H "Authorization: Bearer <token>" https://<api>/metrics` responde, y sin token da 401.
+- Provocar un error de prueba y confirmar que llega a Sentry.
 - En el log de arranque no debe aparecer ningún `Deployment check`.

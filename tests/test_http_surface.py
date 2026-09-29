@@ -178,14 +178,15 @@ class TestDeploymentWarnings:
         warnings = " | ".join(
             _settings(app_env="prod", email_backend="console").deployment_warnings())
         for expected in ("EMAIL_BACKEND=console", "in-memory", "ALLOWED_HOSTS=*",
-                         "localhost origins", "FRONTEND_URL points to localhost"):
+                         "localhost origins", "FRONTEND_URL points to localhost", "SENTRY_DSN is empty"):
             assert expected in warnings
 
     def test_a_complete_prod_config_has_no_warnings(self):
         config = _settings(
             app_env="prod", email_backend="resend", email_api_key="re_x",
             rate_limit_storage_uri="redis://redis:6379", allowed_hosts="api.somosr.com",
-            cors_origins="https://app.somosr.com", frontend_url="https://app.somosr.com")
+            cors_origins="https://app.somosr.com", frontend_url="https://app.somosr.com",
+            sentry_dsn="https://key@example.invalid/1")
         assert config.deployment_warnings() == []
 
     def test_the_app_logs_them_at_startup(self, build, caplog):
