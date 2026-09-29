@@ -1,6 +1,7 @@
+import secrets
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import jwt
 from sqlalchemy import func
@@ -10,6 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.permissions import ensure_can_assign_role
+from app.core.rate_limit import (
+    forgot_password_limit,
+    limiter,
+    login_limit,
+    register_limit,
+    token_flow_limit,
+)
 from app.core.security import (
     bearer_scheme,
     create_access_token,
@@ -49,6 +57,9 @@ from app.domains.users.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Verified against when the account does not exist, so every failure costs one bcrypt check.
+DUMMY_PASSWORD_HASH = hash_password(secrets.token_hex(16))
+
 
 @router.post("/logout", status_code=status.HTTP_200_OK, **LOGOUT_DOCS)
 def logout(
@@ -70,13 +81,16 @@ def logout(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
+@limiter.limit(register_limit)
 def register(
-    request: RegisterRequest,
+    request: Request,
+    
+    body: RegisterRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     actor: User | None = Depends(get_optional_user),
 ):
-    data = request.model_dump()
+    data = body.model_dump()
 
     role_code = data.get("role_code")
     if role_code is not None:
@@ -123,15 +137,30 @@ def register(
 
 
 @router.post("/login", response_model=TokenResponse, **LOGIN_DOCS)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(func.lower(User.email) == request.email.strip().lower()).first()
+@limiter.limit(login_limit)
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(func.lower(User.email) == body.email.strip().lower()).first()
 
-    if not user or not verify_password(request.password, user.password_hash):
+    # Always run one bcrypt comparison, whether the account exists, is locked or has no
+    # password yet, so response time does not reveal which case it is.
+    locked = user is not None and auth_service.is_locked(user)
+    real_hash = user.password_hash if user is not None and not locked else ""
+    password_ok = verify_password(body.password, real_hash or DUMMY_PASSWORD_HASH) and bool(real_hash)
+
+    if user is None or locked or not password_ok:
+        if user is not None and not locked and user.password_hash:
+            auth_service.register_failed_login(user)
+            db.commit()
+        # One answer for unknown account, wrong password and temporary lock.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if user.failed_login_attempts or user.locked_until:
+        auth_service.clear_login_failures(user)
+        db.commit()
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tu cuenta está desactivada")
@@ -151,20 +180,23 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/activate", response_model=MessageResponse, **ACTIVATE_DOCS)
-def activate_account(request: ActivateRequest, db: Session = Depends(get_db)):
-    user = auth_service.consume_token(db, request.token, auth_service.ACTIVATE)
+@limiter.limit(token_flow_limit)
+def activate_account(request: Request, body: ActivateRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, body.token, auth_service.ACTIVATE)
     if user.user_type_code != "recycler" or user.password_hash:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=auth_service.INVALID_LINK)
 
-    user.password_hash = hash_password(request.password)
+    user.password_hash = hash_password(body.password)
     user.email_verified_at = datetime.now(timezone.utc)
+    auth_service.clear_login_failures(user)
     db.commit()
     return MessageResponse(message="Cuenta activada. Ya puedes iniciar sesión")
 
 
 @router.post("/verify-email", response_model=MessageResponse, **VERIFY_EMAIL_DOCS)
-def verify_email(request: TokenRequest, db: Session = Depends(get_db)):
-    user = auth_service.consume_token(db, request.token, auth_service.VERIFY_EMAIL)
+@limiter.limit(token_flow_limit)
+def verify_email(request: Request, body: TokenRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, body.token, auth_service.VERIFY_EMAIL)
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)
     db.commit()
@@ -186,12 +218,15 @@ def resend_verification(
 
 
 @router.post("/forgot-password", response_model=MessageResponse, **FORGOT_PASSWORD_DOCS)
+@limiter.limit(forgot_password_limit)
 def forgot_password(
-    request: ForgotPasswordRequest,
+    request: Request,
+    
+    body: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    user = db.query(User).filter(func.lower(User.email) == request.email).first()
+    user = db.query(User).filter(func.lower(User.email) == body.email).first()
     # Same answer whether or not the account exists; pending recyclers (no password yet) get nothing.
     if user is not None and user.is_active and user.password_hash:
         token = auth_service.issue_token(db, user, auth_service.RESET_PASSWORD)
@@ -203,9 +238,11 @@ def forgot_password(
 
 
 @router.post("/reset-password", response_model=MessageResponse, **RESET_PASSWORD_DOCS)
-def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
-    user = auth_service.consume_token(db, request.token, auth_service.RESET_PASSWORD)
-    user.password_hash = hash_password(request.password)
+@limiter.limit(token_flow_limit)
+def reset_password(request: Request, body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = auth_service.consume_token(db, body.token, auth_service.RESET_PASSWORD)
+    user.password_hash = hash_password(body.password)
+    auth_service.clear_login_failures(user)
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)  # they proved control of the inbox
     db.commit()
@@ -213,15 +250,18 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
 
 
 @router.post("/change-password", response_model=MessageResponse, **CHANGE_PASSWORD_DOCS)
+@limiter.limit(token_flow_limit)
 def change_password(
-    request: ChangePasswordRequest,
+    request: Request,
+    
+    body: ChangePasswordRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not verify_password(request.current_password, user.password_hash):
+    if not verify_password(body.current_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual es incorrecta")
 
-    user.password_hash = hash_password(request.new_password)
+    user.password_hash = hash_password(body.new_password)
     db.commit()
     return MessageResponse(message="Contraseña actualizada")

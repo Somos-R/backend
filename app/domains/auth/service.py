@@ -21,6 +21,24 @@ _TTL_MINUTES = {
     RESET_PASSWORD: lambda: settings.password_reset_token_minutes,
 }
 
+def is_locked(user: User) -> bool:
+    return user.locked_until is not None and user.locked_until > datetime.now(timezone.utc)
+
+
+def register_failed_login(user: User) -> None:
+    """Count a failure; from the Nth consecutive one on, lock for 1, 2, 4, ... minutes (capped)."""
+    user.failed_login_attempts += 1
+    over = user.failed_login_attempts - settings.login_max_attempts
+    if over >= 0:
+        minutes = min(2 ** over, settings.login_lock_max_minutes)
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+
+
+def clear_login_failures(user: User) -> None:
+    user.failed_login_attempts = 0
+    user.locked_until = None
+
+
 INVALID_LINK = "El enlace es inválido, ya fue usado o expiró"
 
 

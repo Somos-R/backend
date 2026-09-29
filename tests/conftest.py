@@ -33,6 +33,7 @@ TEST_DATABASE_URL = _resolve_test_url()
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
 os.environ["SECRET_KEY"] = "test-secret-key-not-for-production-use-0123456789"
 os.environ["EMAIL_BACKEND"] = "memory"
+os.environ["RATE_LIMIT_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

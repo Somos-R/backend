@@ -18,7 +18,8 @@ dependencies = [
     "bcrypt (>=5.0.0,<6.0.0)",
     "python-multipart (>=0.0.26,<0.0.27)",
     "email-validator (>=2.2,<3)",
-    "httpx (>=0.28.1,<0.29)"
+    "httpx (>=0.28.1,<0.29)",
+    "slowapi (>=0.1.9,<0.2)"
 ]
 
 
