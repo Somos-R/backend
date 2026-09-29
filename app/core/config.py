@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Base URL of the web/mobile app; links in emails point here.
     frontend_url: str = "http://localhost:5173"
 
+    # --- HTTP surface ---
+    # Comma-separated browser origins allowed by CORS. Set this per environment.
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,https://somosr.com"
+    cors_allow_credentials: bool = True
+    # Comma-separated Host headers the API answers to ("*" = any). Set it in staging/prod.
+    allowed_hosts: str = "*"
+    # Swagger UI / ReDoc / openapi.json. Default: on in dev, off in staging and prod.
+    enable_docs: bool | None = None
+    # Strict-Transport-Security max-age in seconds; only sent when APP_ENV is staging or prod.
+    hsts_max_age: int = 31536000
+
     # --- Database connection pool (per worker process) ---
     # Total connections = workers x (pool_size + max_overflow). Keep that below the database
     # limit (or the pooler limit, e.g. Supabase). pool_pre_ping is always on.
@@ -85,6 +96,35 @@ class Settings(BaseSettings):
                 "startup will fail with APP_ENV=staging|prod."
             )
         return self
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        return [h.strip() for h in self.allowed_hosts.split(",") if h.strip()] or ["*"]
+
+    @property
+    def docs_enabled(self) -> bool:
+        return self.enable_docs if self.enable_docs is not None else self.app_env == "dev"
+
+    def deployment_warnings(self) -> list[str]:
+        """Settings that are legal but risky outside development. Logged at startup."""
+        if self.app_env == "dev":
+            return []
+        found = []
+        if self.email_backend == "console":
+            found.append("EMAIL_BACKEND=console: activation and reset links are only written to the log")
+        if self.rate_limit_storage_uri.startswith("memory"):
+            found.append("RATE_LIMIT_STORAGE_URI is in-memory: limits are per worker process, not shared")
+        if "*" in self.allowed_host_list:
+            found.append("ALLOWED_HOSTS=* accepts any Host header")
+        if any("localhost" in o or "127.0.0.1" in o for o in self.cors_origin_list):
+            found.append("CORS_ORIGINS still lists localhost origins")
+        if self.frontend_url.startswith("http://localhost"):
+            found.append("FRONTEND_URL points to localhost: links in emails will not work")
+        return found
 
 
 settings = Settings()
