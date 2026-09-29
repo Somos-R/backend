@@ -13,7 +13,7 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.email import send_email
 from app.core.errors import ApiError
-from app.core.permissions import ensure_can_assign_role
+from app.core.permissions import ORG_ADMINS, ensure_can_assign_role, has_role
 from app.core.security import create_access_token, hash_password, verify_password
 from app.domains.audit import service as audit
 from app.domains.audit.actions import FAILURE, Action
@@ -305,6 +305,11 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
             raise ApiError(
                 "invalid_role", status_code=422,
                 detail=f"role_code '{role_code}' no es válido o está inactivo")
+
+    # Staff created by an organization's admin belong to that organization. The client never says which:
+    # it is not part of the request, so it cannot be chosen (or forged) from outside.
+    if actor is not None and has_role(actor, ORG_ADMINS) and data["user_type_code"] == actor.user_type_code:
+        data["organization_id"] = actor.organization_id
 
     if data.get("user_type_code") == "recycler":
         data.pop("password", None)

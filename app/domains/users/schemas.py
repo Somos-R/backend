@@ -119,6 +119,9 @@ class UserDetailResponse(BaseModel):
     # recycler / eca / association
     association_id: uuid.UUID | None
 
+    # eca / association staff: the organization they work for (read-only: it is not editable)
+    organization_id: uuid.UUID | None
+
 
 class UpdateRecyclerStatusRequest(BaseModel):
     status: VerificationStatus

@@ -140,6 +140,8 @@ Requiere autenticación con **Bearer token**.
 - El propio usuario, sobre sus datos personales.
 - `association_admin` sobre usuarios `association` y recicladores; `eca_admin` sobre usuarios `eca`.
 
+`organization_id` (la organización de la que forma parte el personal de ECA o Asociación) es de solo lectura: no se puede modificar por este endpoint.
+
 Los campos `role_code`, `permissions`, `association_id` y `employee_code` solo los puede modificar un administrador de la organización sobre *otro* usuario, nunca sobre sí mismo. El `role_code` debe ser un rol válido para el tipo del usuario destino (`eca_*` para `eca`; `association_*` y `route_manager` para `association`).
 
 **Campos no actualizables por este endpoint:** `email`, `password`, `id_type`,
