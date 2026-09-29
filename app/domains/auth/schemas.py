@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.passwords import Email, Password
+from app.domains.users.schemas import UserDetailResponse
 
 # ---------------------------------------------------------------------------
 # Shared base — fields required for every actor
@@ -237,6 +238,12 @@ class UserResponse(BaseModel):
     user_type_code: str
     role_code: str | None
     created_at: datetime
+
+
+class MeResponse(UserDetailResponse):
+    """The signed-in user's profile plus what they may do, evaluated by the server."""
+
+    capabilities: list[str]
 
 
 class TokenResponse(BaseModel):

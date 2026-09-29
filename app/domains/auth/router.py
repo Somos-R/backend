@@ -4,6 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.permissions import capabilities_for
 from app.core.rate_limit import (
     forgot_password_limit,
     limiter,
@@ -24,6 +25,7 @@ from app.domains.auth.docs import (
     FORGOT_PASSWORD_DOCS,
     LOGIN_DOCS,
     LOGOUT_DOCS,
+    ME_DOCS,
     REFRESH_DOCS,
     REGISTER_DOCS,
     RESEND_VERIFICATION_DOCS,
@@ -35,6 +37,7 @@ from app.domains.auth.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
+    MeResponse,
     MessageResponse,
     RefreshRequest,
     RegisterRequest,
@@ -44,8 +47,15 @@ from app.domains.auth.schemas import (
     UserResponse,
 )
 from app.domains.users.models import User
+from app.domains.users.schemas import UserDetailResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.get("/me", response_model=MeResponse, **ME_DOCS)
+def me(actor: User = Depends(get_current_user)):
+    data = UserDetailResponse.model_validate(actor).model_dump()
+    return MeResponse(**data, capabilities=capabilities_for(actor))
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK, **LOGOUT_DOCS)

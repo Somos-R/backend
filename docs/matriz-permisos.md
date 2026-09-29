@@ -34,6 +34,7 @@ Reglas generales:
 | `POST /auth/register` (sin rol) | ✅ público | | | | | | | |
 | `POST /auth/register` (con `role_code`) | ✅ su org. | — | — | ✅ su org. | — | — | — | — |
 | `POST /auth/login`, `/logout` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `GET /auth/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /catalogs/*` | ✅ público | | | | | | | |
 | `GET /users` | ✅ todos | ✅ recicladores | ✅ recicladores | ✅ eca + recicladores | ✅ recicladores | ✅ recicladores | — | — |
 | `GET /users/{id}` | ✅ todos | ✅ recicladores | ✅ recicladores | ✅ eca + recicladores | ✅ recicladores | ✅ recicladores | 👤 | 👤 |
@@ -57,6 +58,26 @@ Notas de comportamiento:
 
 - Un reciclador que consulta el pesaje de otro recibe **404** (no 403), para no revelar que existe. Al listar solo ve los suyos; pedir `recycler_id` ajeno da 403.
 - `GET /users/{id}` sobre alguien fuera del alcance del rol da 403.
+
+## Capacidades (`GET /auth/me`)
+
+`GET /auth/me` devuelve el perfil y `capabilities`, la lista de lo que el usuario puede hacer, calculada con el mismo módulo de permisos que protege los endpoints (`CAPABILITIES` en `app/core/permissions.py`). Una capacidad existe solo si un endpoint la exige. Es una ayuda para la interfaz, no una barrera: los endpoints siguen respondiendo 403.
+
+| Capacidad | Roles |
+|---|---|
+| `recyclers.view` | cualquier rol de personal (ECA o asociación) |
+| `recyclers.verify` | assoc admin, assoc operativo |
+| `weighings.view` | assoc admin, assoc operativo, eca admin, eca báscula, eca bodega |
+| `weighings.create` | eca admin, eca báscula |
+| `weighings.review` | assoc admin, assoc operativo, eca admin, eca báscula |
+| `weighings.pay`, `transactions.pay` | assoc admin, eca admin |
+| `inventory.view` | assoc admin, assoc operativo, eca admin, eca báscula, eca bodega |
+| `inventory.edit` | eca admin, eca bodega |
+| `transactions.view` | assoc admin, eca admin, eca báscula, eca bodega |
+| `transactions.create`, `transactions.manage` | eca admin, eca bodega |
+| `audit.view` | assoc admin |
+
+Un usuario sin rol, o con un rol que no corresponde a su tipo, recibe la lista vacía.
 
 ## Supuestos a confirmar
 
