@@ -3,11 +3,12 @@
 Counting queries rather than timing them keeps these tests fast and deterministic: a list
 endpoint must cost the same number of queries for 3 rows as for 30 (no N+1).
 """
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 
 from app.core.config import settings
 from app.core.database import build_engine
@@ -21,6 +22,23 @@ from app.domains.weighings.models import Weighing, WeighingStatus
 from tests import factories
 
 MATERIALS = ["papel", "plastico", "vidrio", "metal", "carton", "electronico", "organico"]
+
+
+@contextmanager
+def _orm_loads(*models):
+    """Record every ORM instance of `models` the ORM materialises inside the block."""
+    loaded: list[str] = []
+
+    def on_load(target, context):
+        loaded.append(type(target).__name__)
+
+    for model in models:
+        event.listen(model, "load", on_load)
+    try:
+        yield loaded
+    finally:
+        for model in models:
+            event.remove(model, "load", on_load)
 
 
 def _add_weighings(db, warehouse, recycler, count, material="plastico", kg="10", **extra):
@@ -137,10 +155,8 @@ class TestAggregatesInSql:
 
         for url, bound in (("/weighings/stats", 4), ("/transactions/stats", 3), ("/inventory/stats", 3)):
             db.expunge_all()
-            with count_queries() as statements:
+            with count_queries() as statements, _orm_loads(Weighing, Transaction, InventoryItem) as loaded:
                 assert c.get(url).status_code == 200
-            loaded = [o for o in db.identity_map.values()
-                      if isinstance(o, (Weighing, Transaction, InventoryItem))]
             assert not loaded, f"{url} materialised {len(loaded)} rows instead of aggregating in SQL"
             # bound = authentication (1) + one query per aggregate
             assert len(statements) <= bound, (url, statements)
