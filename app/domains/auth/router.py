@@ -1,14 +1,13 @@
 import secrets
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from jose import jwt
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.core.permissions import ensure_can_assign_role
 from app.core.rate_limit import (
@@ -20,7 +19,7 @@ from app.core.rate_limit import (
 )
 from app.core.security import (
     bearer_scheme,
-    create_access_token,
+    decode_access_token,
     get_current_user,
     get_optional_user,
     hash_password,
@@ -33,6 +32,7 @@ from app.domains.auth.docs import (
     FORGOT_PASSWORD_DOCS,
     LOGIN_DOCS,
     LOGOUT_DOCS,
+    REFRESH_DOCS,
     REGISTER_DOCS,
     RESEND_VERIFICATION_DOCS,
     RESET_PASSWORD_DOCS,
@@ -45,6 +45,7 @@ from app.domains.auth.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
     TokenRequest,
@@ -67,15 +68,13 @@ def logout(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    payload = jwt.decode(
-        credentials.credentials,
-        settings.secret_key,
-        algorithms=[settings.algorithm],
-    )
+    payload = decode_access_token(credentials.credentials)
     db.add(RevokedToken(
         jti=payload["jti"],
         expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
     ))
+    if payload.get("fid"):
+        auth_service.revoke_family(db, uuid.UUID(payload["fid"]))
     db.commit()
     return {"message": "Sesión cerrada exitosamente"}
 
@@ -171,12 +170,17 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
             detail="Tu cuenta está pendiente de verificación o fue rechazada",
         )
 
-    token = create_access_token({
-        "sub": str(user.id),
-        "user_type": user.user_type_code,
-        "role": user.role_code,
-    })
-    return TokenResponse(access_token=token)
+    refresh_token, family_id = auth_service.issue_refresh_token(db, user)
+    db.commit()
+    return TokenResponse(**auth_service.build_token_response(user, refresh_token, family_id))
+
+
+@router.post("/refresh", response_model=TokenResponse, **REFRESH_DOCS)
+@limiter.limit(token_flow_limit)
+def refresh(request: Request, body: RefreshRequest, db: Session = Depends(get_db)):
+    user, refresh_token, family_id = auth_service.rotate_refresh_token(db, body.refresh_token)
+    db.commit()
+    return TokenResponse(**auth_service.build_token_response(user, refresh_token, family_id))
 
 
 @router.post("/activate", response_model=MessageResponse, **ACTIVATE_DOCS)
@@ -189,6 +193,7 @@ def activate_account(request: Request, body: ActivateRequest, db: Session = Depe
     user.password_hash = hash_password(body.password)
     user.email_verified_at = datetime.now(timezone.utc)
     auth_service.clear_login_failures(user)
+    auth_service.revoke_all_sessions(db, user)
     db.commit()
     return MessageResponse(message="Cuenta activada. Ya puedes iniciar sesión")
 
@@ -243,6 +248,7 @@ def reset_password(request: Request, body: ResetPasswordRequest, db: Session = D
     user = auth_service.consume_token(db, body.token, auth_service.RESET_PASSWORD)
     user.password_hash = hash_password(body.password)
     auth_service.clear_login_failures(user)
+    auth_service.revoke_all_sessions(db, user)
     if user.email_verified_at is None:
         user.email_verified_at = datetime.now(timezone.utc)  # they proved control of the inbox
     db.commit()
@@ -263,5 +269,7 @@ def change_password(
             status_code=status.HTTP_400_BAD_REQUEST, detail="La contraseña actual es incorrecta")
 
     user.password_hash = hash_password(body.new_password)
+    # Every session, including this one, must sign in again with the new password.
+    auth_service.revoke_all_sessions(db, user)
     db.commit()
-    return MessageResponse(message="Contraseña actualizada")
+    return MessageResponse(message="Contraseña actualizada. Inicia sesión de nuevo")

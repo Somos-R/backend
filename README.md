@@ -5,7 +5,7 @@ API REST del proyecto **Somos R**: plataforma de gestión de reciclaje que conec
 - **Framework:** Python 3.11+ · FastAPI
 - **Base de datos:** PostgreSQL 15 + PostGIS (local vía Docker, producción en Supabase)
 - **ORM / Migraciones:** SQLAlchemy 2.0 · Alembic
-- **Autenticación:** JWT (python-jose) · bcrypt
+- **Autenticación:** JWT (PyJWT, refresh tokens rotativos) · bcrypt
 - **Gestor de paquetes:** Poetry
 
 ---
@@ -319,7 +319,7 @@ Filtros disponibles en `GET /users`: `user_type_code`, `role_code`, `verificatio
 | API | FastAPI 0.135 |
 | ORM | SQLAlchemy 2.0 + GeoAlchemy2 |
 | Migraciones | Alembic 1.18 |
-| Auth | python-jose 3.5 + bcrypt 5.0 |
+| Auth | PyJWT 2.x + bcrypt 5.0 |
 | DB local | PostgreSQL 15 + PostGIS 3.4 (Docker) |
 | DB producción | Supabase |
 | Eventos | Upstash Redis Pub/Sub |

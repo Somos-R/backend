@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -13,6 +14,8 @@ from app.core.permissions import ensure_role
 
 bearer_scheme = HTTPBearer()
 optional_bearer_scheme = HTTPBearer(auto_error=False)
+
+REQUIRED_CLAIMS = ["exp", "iat", "sub", "jti"]
 
 
 def hash_password(plain: str) -> str:
@@ -27,51 +30,64 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(data: dict) -> str:
+    now = datetime.now(timezone.utc)
     payload = data.copy()
     payload["jti"] = str(uuid.uuid4())
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.access_token_expire_minutes
-    )
+    payload["iat"] = now
+    payload["exp"] = now + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def _user_from_token(token: str, db: Session):
-    invalid = HTTPException(
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Token inválido o expirado",
+        detail=detail,
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def decode_access_token(token: str) -> dict:
+    """Verify signature, expiry and required claims. Raises 401 for anything else."""
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.secret_key,
             algorithms=[settings.algorithm],
+            options={"require": REQUIRED_CLAIMS},
         )
-        user_id: str | None = payload.get("sub")
-        jti: str | None = payload.get("jti")
-        if user_id is None or jti is None:
-            raise invalid
-    except JWTError:
-        raise invalid
+    except jwt.InvalidTokenError:
+        raise _unauthorized("Token inválido o expirado")
 
+
+def _user_from_token(token: str, db: Session):
+    # Imported here: the models import core.database, which would make a cycle at load time.
     from app.domains.auth.models import RevokedToken
-    if db.get(RevokedToken, jti) is not None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="La sesión ha sido cerrada",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     from app.domains.users.models import User
-    user = db.get(User, uuid.UUID(user_id))
-    if user is None:
-        raise invalid
+
+    payload = decode_access_token(token)
+    try:
+        user_id = uuid.UUID(payload["sub"])
+    except (ValueError, TypeError):
+        raise _unauthorized("Token inválido o expirado")
+    jti = payload["jti"]
+
+    # One round trip: the user and, if present, the matching revocation row.
+    row = db.execute(
+        select(User, RevokedToken.jti)
+        .outerjoin(RevokedToken, RevokedToken.jti == jti)
+        .where(User.id == user_id)
+    ).first()
+    if row is None:
+        raise _unauthorized("Token inválido o expirado")
+
+    user, revoked_jti = row
+    if revoked_jti is not None:
+        raise _unauthorized("La sesión ha sido cerrada")
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="La cuenta está desactivada",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized("La cuenta está desactivada")
+    # Bumped on password change/reset: every access token issued before that stops working.
+    if payload.get("tv", 0) != user.token_version:
+        raise _unauthorized("La sesión ya no es válida. Inicia sesión de nuevo")
     return user
 
 

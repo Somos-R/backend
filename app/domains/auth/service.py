@@ -1,6 +1,7 @@
 """One-time tokens (activation, email verification, password reset) and their emails."""
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
@@ -8,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.email import send_email
-from app.domains.auth.models import OneTimeToken
+from app.core.security import create_access_token
+from app.domains.auth.models import OneTimeToken, RefreshToken
+from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 
 ACTIVATE = "activate"
@@ -130,3 +133,98 @@ def send_password_reset_email(to: str, full_name: str, token: str) -> None:
         f"El enlace es de un solo uso y vence en {settings.password_reset_token_minutes} minutos. "
         "Si no fuiste tú, ignora este mensaje; tu contraseña no cambiará.",
     )
+
+
+# --- Refresh tokens (rotating, reuse-detecting) ---------------------------------------
+
+INVALID_REFRESH = "El token de renovación es inválido o expiró. Inicia sesión de nuevo"
+
+
+def _refresh_unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=INVALID_REFRESH,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def issue_refresh_token(db: Session, user: User, family_id: uuid.UUID | None = None) -> tuple[str, uuid.UUID]:
+    """Create a refresh token (new family unless `family_id` is given). Returns (raw, family). Caller commits."""
+    raw = secrets.token_urlsafe(48)
+    family = family_id or uuid.uuid4()
+    db.add(RefreshToken(
+        user_id=user.id,
+        family_id=family,
+        token_hash=_hash(raw),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_days),
+    ))
+    db.flush()
+    return raw, family
+
+
+def revoke_family(db: Session, family_id: uuid.UUID) -> None:
+    db.query(RefreshToken).filter(
+        RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None)
+    ).update({RefreshToken.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+
+
+def revoke_all_sessions(db: Session, user: User) -> None:
+    """Kill every session of the user: refresh tokens now, access tokens via token_version."""
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+    ).update({RefreshToken.revoked_at: datetime.now(timezone.utc)}, synchronize_session=False)
+    user.token_version += 1
+
+
+def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str, uuid.UUID]:
+    """Exchange a refresh token for a new one in the same family. Raises 401 otherwise.
+
+    Reusing a token that was already rotated (or revoked) means it leaked, so the whole
+    family is revoked. That revocation is committed here, before the error is raised.
+    """
+    row = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.token_hash == _hash(raw))
+        .with_for_update()
+        .first()
+    )
+    if row is None:
+        raise _refresh_unauthorized()
+
+    now = datetime.now(timezone.utc)
+    if row.used_at is not None or row.revoked_at is not None:
+        revoke_family(db, row.family_id)
+        db.commit()
+        raise _refresh_unauthorized()
+    if row.expires_at <= now:
+        raise _refresh_unauthorized()
+
+    user = db.get(User, row.user_id)
+    if (
+        user is None
+        or not user.is_active
+        or (user.user_type_code == "recycler" and user.verification_status != VerificationStatus.verified)
+    ):
+        revoke_family(db, row.family_id)
+        db.commit()
+        raise _refresh_unauthorized()
+
+    row.used_at = now
+    new_raw, family = issue_refresh_token(db, user, row.family_id)
+    return user, new_raw, family
+
+
+def build_token_response(user: User, refresh_token: str, family_id: uuid.UUID) -> dict:
+    access = create_access_token({
+        "sub": str(user.id),
+        "user_type": user.user_type_code,
+        "role": user.role_code,
+        "fid": str(family_id),
+        "tv": user.token_version,
+    })
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "expires_in": settings.access_token_expire_minutes * 60,
+        "refresh_token": refresh_token,
+    }
