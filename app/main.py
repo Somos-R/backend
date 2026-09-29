@@ -19,6 +19,7 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.core.structured_logging import configure_logging
 from app.domains.admin.router import router as admin_router
+from app.domains.audit.router import admin_router as admin_audit_router
 from app.domains.audit.router import router as audit_router
 from app.domains.auth.router import router as auth_router
 from app.domains.catalogs.router import router as catalogs_router
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(transactions_router)
     app.include_router(audit_router)
     app.include_router(admin_router)
+    app.include_router(admin_audit_router)
     return app
 
 

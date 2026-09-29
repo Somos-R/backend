@@ -94,6 +94,7 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 - **Recuperación:** códigos de recuperación (regenerables con un código vigente), restablecimiento por la otra persona de Somos R (`POST /admin/users/{id}/mfa/reset`, capacidad `users.manage`; nadie el propio) o, como último recurso, `scripts/reset_platform_mfa.py`. Restablecer termina las sesiones de la cuenta.
 - **Todo queda auditado:** `admin.login`, `admin.login_failed`, `admin.logout`, `admin.mfa_enrolled`, `admin.mfa_failed`, `admin.recovery_code_used`, `admin.recovery_codes_regenerated`, `admin.mfa_reset`.
 - `GET /admin/me` devuelve el perfil, las capacidades del rol y el estado del segundo factor.
+- **`GET /admin/audit-log`** (capacidad `audit.read`): el registro de auditoría **completo**, de todas las organizaciones y de las cuentas de Somos R, con los filtros de `GET /audit-log` más `actor_role` y `organization_id`. Cada consulta queda auditada (`admin.audit_viewed`, con los nombres de los filtros usados y no sus valores).
 
 ## Capacidades (`GET /auth/me`)
 
