@@ -87,7 +87,7 @@ def ensure_can_assign_role(actor, role_code: str, target_user_type: str) -> None
     role_type = ROLE_USER_TYPE.get(role_code)
     if role_type is None or role_type != target_user_type:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail=f"role_code '{role_code}' no es válido para un usuario de tipo '{target_user_type}'",
         )
     if role_type != actor.user_type_code:

@@ -98,7 +98,7 @@ def register(
         role = db.query(Role).filter(Role.code == role_code, Role.is_active == True).first()
         if role is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=422,
                 detail=f"role_code '{role_code}' no es válido o está inactivo",
             )
 
