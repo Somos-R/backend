@@ -36,7 +36,14 @@ docker compose exec app poetry run pytest
 
 # Ejecutar un test específico
 docker compose exec app poetry run pytest tests/ruta/test_archivo.py::nombre_test -v
+
+# Lo mismo que corre el CI (lint, tipos, tests con cobertura mínima de 90%)
+docker compose exec app poetry run ruff check app tests
+docker compose exec app poetry run mypy app
+docker compose exec app poetry run pytest --cov
 ```
+
+**Tests:** `tests/conftest.py` recrea una base `<nombre>_test` (nunca toca la de desarrollo) y la migra con Alembic en cada sesión; cada test corre en una transacción con rollback. Necesita Postgres/PostGIS arriba (`docker compose up -d postgres`). `tests/test_known_issues.py` contiene brechas de seguridad conocidas como `xfail(strict=True)`: al corregir una, su test pasa, falla por ser estricto, y hay que quitar la marca.
 
 URLs locales: API `http://localhost:8000` · Swagger `http://localhost:8000/docs` · ReDoc `http://localhost:8000/redoc` · pgAdmin `http://localhost:5050`
 

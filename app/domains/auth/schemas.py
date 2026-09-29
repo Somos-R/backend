@@ -4,7 +4,6 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ---------------------------------------------------------------------------
 # Shared base — fields required for every actor
 # ---------------------------------------------------------------------------
@@ -83,7 +82,7 @@ class RecyclerRegister(_RegisterBase):
         }
     )
     user_type_code: Literal["recycler"] = "recycler"
-    password: str | None = None  # no requerida; se asigna automáticamente al verificar
+    password: str | None = None  # type: ignore[assignment]  # no requerida; se asigna automáticamente al verificar
 
 
 class EcaRegister(_RegisterBase):

@@ -8,7 +8,11 @@ from app.core.database import get_db
 from app.core.security import get_current_user
 from app.domains.inventory.models import Material, Warehouse
 from app.domains.transactions import service as tx_service
-from app.domains.transactions.models import Transaction, TransactionStatus, TransactionType
+from app.domains.transactions.models import (
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.domains.transactions.schemas import (
     CreateVentaRequest,
     TransactionListResponse,

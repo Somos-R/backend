@@ -5,7 +5,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.domains.inventory import service as inventory_service
-from app.domains.transactions.models import Transaction, TransactionStatus, TransactionType
+from app.domains.transactions.models import (
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.domains.weighings.models import Weighing
 
 

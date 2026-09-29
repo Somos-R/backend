@@ -15,9 +15,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      # Settings() requires these; no real DB is needed until tests hit one.
+      # tests/conftest.py drops and recreates this database on every run.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/somos_r_test
-      SECRET_KEY: ci-test-secret-key
+      SECRET_KEY: ci-test-secret-key-not-for-production-use-0123456789
+    services:
+      postgres:
+        image: postgis/postgis:15-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -31,9 +43,14 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-root --no-interaction
 
+      - name: Lint (ruff)
+        run: poetry run ruff check app tests
+
+      - name: Type check (mypy)
+        run: poetry run mypy app
+
       - name: Run tests
-        run: poetry run pytest --tb=short -q
-        continue-on-error: true   # Don't fail the run until there are real tests to fail on
+        run: poetry run pytest --tb=short -q --cov --cov-report=term-missing
 
   # ─── Build image (smoke test — not pushed anywhere for deployment yet) ────
   build:

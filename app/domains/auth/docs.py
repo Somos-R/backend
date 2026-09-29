@@ -1,4 +1,6 @@
-REGISTER_DOCS = {
+from typing import Any
+
+REGISTER_DOCS: dict[str, Any] = {
     "summary": "Registrar un nuevo usuario",
     "description": """
 Crea una cuenta para cualquier tipo de actor del sistema.
@@ -52,7 +54,7 @@ Consulta los valores válidos de `id_type` en `GET /catalogs/document-types`.
     },
 }
 
-LOGOUT_DOCS = {
+LOGOUT_DOCS: dict[str, Any] = {
     "summary": "Cerrar sesión",
     "description": """
 Invalida el token JWT activo agregándolo a la lista negra del servidor.
@@ -74,7 +76,7 @@ Requiere autenticación con **Bearer token**.
     },
 }
 
-LOGIN_DOCS = {
+LOGIN_DOCS: dict[str, Any] = {
     "summary": "Iniciar sesión",
     "description": """
 Valida las credenciales del usuario y retorna un **JWT Bearer token**.

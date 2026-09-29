@@ -1,4 +1,6 @@
-LIST_USERS_DOCS = {
+from typing import Any
+
+LIST_USERS_DOCS: dict[str, Any] = {
     "summary": "Listar usuarios",
     "description": """
 Retorna el listado paginado de todos los usuarios registrados, con su perfil completo.
@@ -28,7 +30,7 @@ La respuesta incluye `total` con el conteo total antes de aplicar paginación.
     },
 }
 
-GET_USER_DOCS = {
+GET_USER_DOCS: dict[str, Any] = {
     "summary": "Obtener perfil de un usuario",
     "description": """
 Retorna el perfil completo de un usuario por su UUID.
@@ -63,7 +65,7 @@ Los campos mostrados varían según el `user_type_code` del usuario:
     },
 }
 
-UPDATE_RECYCLER_STATUS_DOCS = {
+UPDATE_RECYCLER_STATUS_DOCS: dict[str, Any] = {
     "summary": "Actualizar estado de verificación de un reciclador",
     "description": """
 Actualiza el estado de verificación de un reciclador. Solo aplica para usuarios de tipo `recycler`.
@@ -114,7 +116,7 @@ permitiéndole iniciar sesión desde ese momento en `POST /auth/login`.
     },
 }
 
-UPDATE_USER_DOCS = {
+UPDATE_USER_DOCS: dict[str, Any] = {
     "summary": "Actualizar perfil de un usuario",
     "description": """
 Actualiza parcialmente el perfil de un usuario. Solo se modifican los campos
