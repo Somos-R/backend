@@ -120,6 +120,7 @@ def create_weighing(
     recycler = db.get(User, request.recycler_id)
     if not recycler or recycler.user_type_code != "recycler":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
+    weighing_service.ensure_recycler_can_deliver(recycler)
 
     if not db.get(Material, request.material_code):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")

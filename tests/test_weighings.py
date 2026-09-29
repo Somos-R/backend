@@ -1,12 +1,17 @@
 """Characterization tests for /weighings, including the validation side effects."""
 from decimal import Decimal
 
+import pytest
+
+from app.domains.audit.models import AuditLog
 from app.domains.inventory.models import InventoryItem
 from app.domains.transactions.models import (
     Transaction,
     TransactionStatus,
     TransactionType,
 )
+from app.domains.users.enums import VerificationStatus
+from app.domains.weighings.models import Weighing
 from tests import factories
 
 MISSING_ID = "00000000-0000-0000-0000-000000000000"
@@ -161,3 +166,67 @@ class TestStatusTransitions:
         r = client_as(eca_admin).patch(
             f"/weighings/{MISSING_ID}/status", json={"status": "validado"})
         assert r.status_code == 404
+
+
+class TestVerifiedRecyclerRule:
+    """A weighing needs a verified, active recycler (product rule: 'reciclador verificado')."""
+
+    MESSAGE = "no está verificado"
+
+    @pytest.mark.parametrize("state", [VerificationStatus.pending, VerificationStatus.rejected])
+    def test_an_unverified_recycler_cannot_be_weighed(self, client_as, eca_admin, warehouse, db, state):
+        recycler = factories.make_user(db, "recycler", verification_status=state)
+        r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
+        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
+
+    def test_a_deactivated_recycler_cannot_be_weighed(self, client_as, eca_admin, warehouse, db):
+        recycler = factories.make_user(db, "recycler", is_active=False)
+        r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
+        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
+
+    def test_a_refused_weighing_leaves_no_row_and_no_audit_entry(self, client_as, eca_admin, warehouse, db):
+        recycler = factories.make_user(db, "recycler", verification_status=VerificationStatus.pending)
+        client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
+        assert db.query(Weighing).count() == 0
+        assert db.query(AuditLog).filter(AuditLog.action == "weighing.created").count() == 0
+
+    def test_a_verified_recycler_still_works(self, client_as, eca_admin, recycler, warehouse):
+        assert client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse)).status_code == 201
+
+    def test_a_user_who_is_not_a_recycler_is_still_a_404(self, client_as, eca_admin, citizen, warehouse):
+        assert client_as(eca_admin).post("/weighings", json=_payload(citizen, warehouse)).status_code == 404
+
+    def test_losing_verification_before_validation_blocks_the_validation(
+        self, client_as, eca_admin, recycler, warehouse, db
+    ):
+        c = client_as(eca_admin)
+        weighing = _create(c, recycler, warehouse)
+        recycler.verification_status = VerificationStatus.rejected
+        db.commit()
+
+        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validado"})
+        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
+        # nothing moved: still pending, no stock, no purchase owed to the recycler
+        db.expire_all()
+        assert db.get(Weighing, weighing["id"]).estado.value == "pendiente"
+        assert db.query(InventoryItem).count() == 0
+        assert c.get("/transactions?type=compra").json()["total"] == 0
+
+    def test_a_deactivated_recycler_blocks_the_validation_too(self, client_as, eca_admin, recycler, warehouse, db):
+        c = client_as(eca_admin)
+        weighing = _create(c, recycler, warehouse)
+        recycler.is_active = False
+        db.commit()
+        r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validado"})
+        assert r.status_code == 400
+
+    def test_a_weighing_can_still_be_rejected_after_the_recycler_lost_verification(
+        self, client_as, eca_admin, recycler, warehouse, db
+    ):
+        c = client_as(eca_admin)
+        weighing = _create(c, recycler, warehouse)
+        recycler.verification_status = VerificationStatus.rejected
+        db.commit()
+        r = c.patch(f"/weighings/{weighing['id']}/status",
+                    json={"status": "rechazado", "rejection_reason": "Reciclador sin verificar"})
+        assert r.status_code == 200 and r.json()["estado"] == "rechazado"
