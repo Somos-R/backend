@@ -41,10 +41,11 @@ class TestEmailVerification:
         assert [m.to for m in outbox] == ["ana@test.com"]
         assert "verify-email?token=" in outbox[0].body
 
-    def test_recycler_registration_sends_nothing(self, client, outbox):
+    def test_recycler_registration_sends_nothing(self, client, db, outbox):
+        association = factories.make_organization(db, "association")
         r = client.post("/auth/register", json={
             "user_type_code": "recycler", "email": "rec@test.com", "full_name": "Rec Icla",
-            "id_type": "CC", "id_number": "80234567"})
+            "id_type": "CC", "id_number": "80234567", "association_id": str(association.id)})
         assert r.status_code == 201
         assert outbox == []
 

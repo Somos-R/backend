@@ -19,6 +19,8 @@ from app.domains.audit import service as audit
 from app.domains.audit.actions import FAILURE, Action
 from app.domains.auth.models import OneTimeToken, RefreshToken, RevokedToken
 from app.domains.catalogs.models import Role
+from app.domains.organizations.enums import OrganizationStatus, OrganizationType
+from app.domains.organizations.models import Organization
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 
@@ -306,6 +308,32 @@ def logout(db: Session, actor: User, payload: dict) -> None:
     db.commit()
 
 
+def _recycler_association(db: Session, actor: User | None, chosen: uuid.UUID | None) -> uuid.UUID:
+    """The association a new recycler belongs to (it is who verifies them).
+
+    Association staff register recyclers into their own association. Anyone else must choose one of the
+    approved associations of the directory.
+    """
+    if actor is not None and actor.user_type_code == "association":
+        if actor.organization_id is None:
+            raise ApiError("no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                           detail="Tu cuenta no está asociada a una organización, así que no puede registrar recicladores")
+        if chosen is not None and chosen != actor.organization_id:
+            raise ApiError("invalid_association", status_code=422,
+                           detail="Solo puedes registrar recicladores en tu propia asociación")
+        return actor.organization_id
+    if chosen is None:
+        raise ApiError("association_required", status_code=422,
+                       detail="Elige la asociación a la que perteneces (association_id)")
+    association = db.get(Organization, chosen)
+    if (
+        association is None or association.type != OrganizationType.association
+        or association.status != OrganizationStatus.approved
+    ):
+        raise ApiError("invalid_association", status_code=422, detail="La asociación elegida no existe o no está activa")
+    return association.id
+
+
 def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, str | None]:
     """Create an account. Returns the user and the email-verification token to send (if any)."""
     role_code = data.get("role_code")
@@ -328,6 +356,7 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
         data["organization_id"] = actor.organization_id
 
     if data.get("user_type_code") == "recycler":
+        data["organization_id"] = _recycler_association(db, actor, data.pop("association_id", None))
         data.pop("password", None)
         data["password_hash"] = ""
         data["verification_status"] = VerificationStatus.pending

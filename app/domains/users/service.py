@@ -65,12 +65,13 @@ def search_clause(q: str | None) -> ColumnElement[bool] | None:
 
 
 def _in_scope_clause(actor: User) -> ColumnElement[bool]:
-    """SQL twin of `in_scope`: people who are not staff, plus the staff of the actor's own organization."""
+    """SQL twin of `in_scope`: whoever is not tied to an organization, plus those of the actor's own."""
+    scoped = set(STAFF_TYPES) | ({"recycler"} if actor.user_type_code == "association" else set())
     if actor.organization_id is None:
-        return User.user_type_code.not_in(STAFF_TYPES)
+        return User.user_type_code.not_in(scoped)
     return or_(
-        User.user_type_code.not_in(STAFF_TYPES),
-        and_(User.user_type_code.in_(STAFF_TYPES), User.organization_id == actor.organization_id),
+        User.user_type_code.not_in(scoped),
+        and_(User.user_type_code.in_(scoped), User.organization_id == actor.organization_id),
     )
 
 
@@ -133,6 +134,8 @@ def set_verification_status(
     if user.user_type_code != "recycler":
         raise ApiError("not_a_recycler", status_code=status.HTTP_400_BAD_REQUEST,
                        detail="Este endpoint solo aplica para recicladores")
+    if not in_scope(actor, user):  # only the association the recycler belongs to verifies them
+        raise _user_not_found()
 
     user.verification_status = request.status
 

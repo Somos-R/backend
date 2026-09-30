@@ -35,6 +35,8 @@ El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `4
 
 **Para dar de alta personal, usa `POST /users/invitations`** (la persona elige su propia contraseña por un enlace). Crear personal con contraseña por este endpoint queda como está por compatibilidad, pero es la vía que se retirará.
 
+**Asociación del reciclador (`association_id`):** todo reciclador pertenece a una asociación, que es la que lo verifica. El personal de una asociación lo registra en la suya (no hace falta enviarlo); cualquier otro debe elegir una asociación aprobada de `GET /catalogs/associations` (`422 association_required` si falta, `422 invalid_association` si no existe o no está aprobada).
+
 **Registro de reciclador (lo hace la asociación):** no requiere `password`. El reciclador queda
 en estado `0` (pendiente) y no puede iniciar sesión hasta ser verificado con `PATCH /users/{id}/verification-status`.
 

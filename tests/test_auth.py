@@ -28,12 +28,14 @@ class TestRegister:
         assert "password" not in body and "password_hash" not in body
 
     def test_recycler_needs_no_password_and_starts_pending(self, client, db):
+        association = factories.make_organization(db, "association")
         r = client.post("/auth/register", json={
             "user_type_code": "recycler",
             "email": "reciclador@test.com",
             "full_name": "Carlos Mendoza",
             "id_type": "CC",
             "id_number": "80234567",
+            "association_id": str(association.id),
         })
         assert r.status_code == 201
         user = db.get(User, r.json()["id"])

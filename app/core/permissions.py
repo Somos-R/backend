@@ -136,6 +136,10 @@ def in_scope(actor, target) -> bool:
     """
     if target.user_type_code in STAFF_TYPES:
         return same_organization(actor, target)
+    if target.user_type_code == "recycler" and actor.user_type_code == "association":
+        # A recycler belongs to one association, the one that verifies them. ECA staff still reach every
+        # recycler (they weigh them); tying that to the links is part of the operational data work.
+        return same_organization(actor, target)
     return True
 
 

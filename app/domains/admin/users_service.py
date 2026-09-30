@@ -164,9 +164,9 @@ def assign_organization(db: Session, actor: User, user_id: uuid.UUID, organizati
     organization's data. Deactivate and invite them again instead.
     """
     user = _get(db, user_id)
-    if user.user_type_code not in STAFF_TYPES:
+    if user.user_type_code not in STAFF_TYPES and user.user_type_code != "recycler":
         raise ApiError("organization_not_applicable", status_code=status.HTTP_409_CONFLICT,
-                       detail="Solo el personal de ECA y Asociación pertenece a una organización")
+                       detail="Solo el personal de ECA y Asociación y los recicladores pertenecen a una organización")
     if user.organization_id is not None:
         raise ApiError("already_in_organization", status_code=status.HTTP_409_CONFLICT,
                        detail="Esta persona ya pertenece a una organización")
@@ -174,7 +174,9 @@ def assign_organization(db: Session, actor: User, user_id: uuid.UUID, organizati
     if organization is None:
         raise ApiError("organization_not_found", status_code=status.HTTP_404_NOT_FOUND,
                        detail="Organización no encontrada")
-    if organization.type.value != user.user_type_code:
+    # A recycler belongs to an association; staff belong to an organization of their own type.
+    expected = "association" if user.user_type_code == "recycler" else user.user_type_code
+    if organization.type.value != expected:
         raise ApiError("organization_type_mismatch", status_code=422,
                        detail="La organización no es del mismo tipo que la persona")
     if organization.status != OrganizationStatus.approved:

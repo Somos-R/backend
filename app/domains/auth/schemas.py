@@ -71,7 +71,11 @@ class BuildingRegister(_RegisterBase):
 
 
 class RecyclerRegister(_RegisterBase):
-    """La asociación registra al reciclador sin contraseña; queda en estado pendiente (0)."""
+    """El reciclador queda ligado a una asociación (que lo verifica) y en estado pendiente, sin contraseña.
+
+    `association_id` es el id de una asociación aprobada (`GET /catalogs/associations`). Si quien registra es
+    personal de una asociación, se toma la suya y no hace falta enviarlo.
+    """
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [{
@@ -81,10 +85,12 @@ class RecyclerRegister(_RegisterBase):
                 "phone": "3156789012",
                 "id_type": "CC",
                 "id_number": "80234567",
+                "association_id": "3f2b7c0e-8a55-4c57-b7a4-0c0f0f0f0f0f",
             }]
         }
     )
     user_type_code: Literal["recycler"] = "recycler"
+    association_id: uuid.UUID | None = None
     password: Password | None = None  # type: ignore[assignment]  # no requerida; se asigna automáticamente al verificar
 
 

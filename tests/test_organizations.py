@@ -59,9 +59,9 @@ class TestEntity:
             db.commit()
         db.rollback()
 
-    def test_users_outside_the_staff_have_none(self, db):
-        assert factories.make_user(db, "recycler").organization_id is None
+    def test_people_who_are_not_staff_or_recyclers_have_none(self, db):
         assert factories.make_user(db, "citizen").organization_id is None
+        assert factories.make_user(db, "building").organization_id is None
 
 
 class TestStaffInheritTheirAdminsOrganization:
@@ -97,14 +97,14 @@ class TestStaffInheritTheirAdminsOrganization:
         assert r.status_code == 201
         assert db.get(User, r.json()["id"]).organization_id is None
 
-    def test_a_recycler_registered_by_staff_has_none(self, client_as, db):
+    def test_a_recycler_registered_by_association_staff_joins_their_association(self, client_as, db):
         org = factories.make_organization(db, "association")
         admin = factories.make_user(db, "association", role_code="association_admin", organization_id=org.id)
         payload = {"user_type_code": "recycler", "email": "reci@test.com", "full_name": "Reci Clador",
                    "id_type": "CC", "id_number": "5551234"}
         r = client_as(admin).post("/auth/register", json=payload)
         assert r.status_code == 201, r.text
-        assert db.get(User, r.json()["id"]).organization_id is None
+        assert db.get(User, r.json()["id"]).organization_id == org.id
 
 
 class TestTheClientCannotChooseIt:
@@ -140,8 +140,8 @@ class TestVisibleAsReadOnly:
         assert client_as(admin).get(f"/users/{admin.id}").json()["organization_id"] == str(org.id)
 
     def test_users_without_one_show_null(self, client_as, db):
-        recycler = factories.make_user(db, "recycler")
-        assert client_as(recycler).get("/auth/me").json()["organization_id"] is None
+        citizen = factories.make_user(db, "citizen")
+        assert client_as(citizen).get("/auth/me").json()["organization_id"] is None
 
     def test_the_list_carries_it_too(self, client_as, db):
         org = factories.make_organization(db, "eca")

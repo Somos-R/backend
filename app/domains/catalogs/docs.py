@@ -42,3 +42,13 @@ Asignarlo requiere ser administrador de esa organización.
 No requiere autenticación.
 """,
 }
+
+ASSOCIATIONS_DOCS: dict[str, Any] = {
+    "summary": "Asociaciones a las que se puede pertenecer",
+    "description": """
+Las asociaciones **aprobadas**, para que un reciclador elija la suya al registrarse (`association_id` en
+`POST /auth/register`). Es público y solo trae el nombre y la ciudad: ningún dato de contacto ni tributario.
+`q` busca por nombre sin distinguir mayúsculas ni tildes (mínimo 2 caracteres). Paginado con `limit` (máx. 100) y
+`offset`, en orden alfabético.
+""",
+}
