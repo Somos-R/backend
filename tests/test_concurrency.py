@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.domains.inventory import service as inventory_service
 from app.domains.inventory.models import InventoryItem, Warehouse
 from app.domains.transactions.models import Transaction, TransactionType
-from app.domains.weighings.models import Weighing
+from app.domains.weighings.models import AffiliationStatus, Weighing
 from app.main import app
 from tests import factories
 
@@ -79,7 +79,8 @@ def _seed_stock(world, kg, precio="500", material="plastic"):
 def _make_weighings(world, count, kg="10", precio="400", material="plastic"):
     with Session(world["engine"]) as session:
         rows = [Weighing(recycler_id=world["recycler_id"], material_code=material,
-                         warehouse_id=world["warehouse_id"], kg=Decimal(kg), price_per_kg=Decimal(precio))
+                         warehouse_id=world["warehouse_id"], kg=Decimal(kg), price_per_kg=Decimal(precio),
+                         affiliation_status=AffiliationStatus.linked)
                 for _ in range(count)]
         session.add_all(rows)
         session.commit()
@@ -245,7 +246,7 @@ class TestDatabaseConstraints:
     def test_weighings_need_positive_quantities(self, db, warehouse, recycler, kg, price):
         self._expect_rejected(db, Weighing(
             recycler_id=recycler.id, material_code="plastic", warehouse_id=warehouse.id,
-            kg=Decimal(kg), price_per_kg=Decimal(price)))
+            kg=Decimal(kg), price_per_kg=Decimal(price), affiliation_status=AffiliationStatus.linked))
 
     def test_transactions_need_positive_quantities(self, db, warehouse, eca_admin):
         self._expect_rejected(db, Transaction(
@@ -254,7 +255,7 @@ class TestDatabaseConstraints:
 
     def test_a_weighing_cannot_produce_two_purchases(self, db, warehouse, recycler, eca_admin):
         weighing = Weighing(recycler_id=recycler.id, material_code="plastic",
-                            warehouse_id=warehouse.id, kg=Decimal("10"), price_per_kg=Decimal("100"))
+                            warehouse_id=warehouse.id, kg=Decimal("10"), price_per_kg=Decimal("100"), affiliation_status=AffiliationStatus.linked)
         db.add(weighing)
         db.flush()
 

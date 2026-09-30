@@ -20,11 +20,12 @@ from app.core.permissions import (
 from app.core.security import get_current_user, require_roles
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
+from app.domains.catalogs.models import DocumentType
 from app.domains.inventory.models import Material
 from app.domains.organizations import scope
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
-from app.domains.weighings.models import Weighing, WeighingStatus
+from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
     UpdateWeighingStatusRequest,
@@ -48,6 +49,7 @@ def list_weighings(
     material_code: str | None       = Query(default=None),
     warehouse_id:  uuid.UUID | None = Query(default=None),
     status_:       WeighingStatus | None = Query(default=None, alias="status"),
+    affiliation:   AffiliationStatus | None = Query(default=None),
     limit:         int              = Query(default=20, ge=1, le=100),
     offset:        int              = Query(default=0, ge=0),
     db:            Session          = Depends(get_db),
@@ -70,6 +72,8 @@ def list_weighings(
         query = query.where(Weighing.warehouse_id == warehouse_id)
     if status_:
         query = query.where(Weighing.status == status_)
+    if affiliation:
+        query = query.where(Weighing.affiliation_status == affiliation)
 
     total, weighings = paginate(
         db, query, Weighing.occurred_at.desc(), Weighing.id, limit=limit, offset=offset,
@@ -120,21 +124,34 @@ def create_weighing(
     db:      Session = Depends(get_db),
     actor:   User    = Depends(require_roles(*WEIGHINGS_CREATE)),
 ):
-    recycler = db.get(User, request.recycler_id)
-    if not recycler or recycler.user_type_code != "recycler":
-        raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
-    weighing_service.ensure_recycler_can_deliver(recycler)
+    recycler = None
+    if request.recycler_id is not None:
+        recycler = db.get(User, request.recycler_id)
+        if not recycler or recycler.user_type_code != "recycler":
+            raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
+        weighing_service.ensure_recycler_is_active(recycler)
+    elif request.seller is not None and db.get(DocumentType, request.seller.id_type) is None:
+        raise ApiError("invalid_id_type", status_code=422, detail=f"id_type '{request.seller.id_type}' no es válido")
 
     if not db.get(Material, request.material_code):
         raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
 
-    # Only in a warehouse of the actor's own ECA, and only a recycler of an association linked to it.
+    # Only in a warehouse of the actor's own ECA. The ECA receives the material whoever brings it; how the
+    # seller relates to the ECA (linked, another association's, independent) is recorded, and decides
+    # whether the weighing reaches an association.
     warehouse = scope.get_own_warehouse(db, actor, request.warehouse_id)
-    scope.ensure_recycler_delivers_to(db, warehouse.organization_id, recycler)
+    affiliation = (
+        scope.affiliation_of(db, warehouse.organization_id, recycler) if recycler is not None
+        else AffiliationStatus.independent)
+    seller = request.seller
 
     weighing = Weighing(
         id=uuid.uuid4(),
         recycler_id=request.recycler_id,
+        seller_name=seller.full_name.strip() if seller else None,
+        seller_id_type=seller.id_type if seller else None,
+        seller_id_number=seller.id_number if seller else None,
+        affiliation_status=affiliation,
         material_code=request.material_code,
         warehouse_id=request.warehouse_id,
         kg=request.kg,
@@ -143,8 +160,9 @@ def create_weighing(
     db.add(weighing)
     audit.record(
         db, Action.WEIGHING_CREATED, actor=actor, target_type="weighing", target_id=weighing.id,
-        details={"recycler_id": str(request.recycler_id), "material": request.material_code,
-                 "kg": str(request.kg), "price_per_kg": str(request.price_per_kg)})
+        details={"recycler_id": str(request.recycler_id) if request.recycler_id else None,
+                 "walk_in": seller is not None, "affiliation": affiliation.value,
+                 "material": request.material_code, "kg": str(request.kg), "price_per_kg": str(request.price_per_kg)})
     db.commit()
     db.refresh(weighing)
     return weighing
@@ -208,7 +226,8 @@ def update_weighing_status(
          WeighingStatus.paid: Action.WEIGHING_PAID}[request.status],
         actor=current_user, target_type="weighing", target_id=weighing.id,
         details={"from": previous, "material": weighing.material_code, "kg": str(weighing.kg),
-                 "price_per_kg": str(weighing.price_per_kg), "recycler_id": str(weighing.recycler_id)})
+                 "price_per_kg": str(weighing.price_per_kg),
+                 "recycler_id": str(weighing.recycler_id) if weighing.recycler_id else None})
     db.commit()
     db.refresh(weighing)
     return weighing

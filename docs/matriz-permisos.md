@@ -74,14 +74,32 @@ Los permisos de arriba dicen *qué* puede hacer cada rol; el alcance dice *sobre
 
 | Quién | Qué alcanza |
 |---|---|
-| Personal de una **ECA** | Lo de **sus** bodegas: inventario (lee y edita según su rol), pesajes y transacciones. Solo puede **pesar en sus bodegas** y **solo a recicladores de asociaciones vinculadas a su ECA** (`409 recycler_not_linked` si no; el vínculo debe estar `active` en ese momento). Una venta solo sale de una bodega propia. |
-| Personal de una **asociación** | **Lee** los pesajes y las **compras** de **sus** recicladores (de cualquier ECA; el historial no se pierde si el vínculo termina) y las bodegas e inventario de las **ECA con vínculo activo**, sin escribir. No ve las ventas de la ECA. Puede validar y pagar lo de sus recicladores, según su rol. |
+| Personal de una **ECA** | Lo de **sus** bodegas: inventario (lee y edita según su rol), pesajes y transacciones. Solo puede **pesar en sus bodegas**, pero **recibe el material de quien lo traiga** (ver «Quién puede vender a una ECA»). |
+| Personal de una **asociación** | **Lee** los pesajes y las **compras** de **sus** recicladores **que llegaron por el vínculo** (`affiliation_status = linked`; el historial no se pierde si el vínculo termina) y las bodegas e inventario de las **ECA con vínculo activo**, sin escribir. No ve las ventas de la ECA. Puede validar y pagar lo de sus recicladores, según su rol. |
 | Reciclador | Sus propios pesajes, como antes. |
 | Sin organización | Nada (falla cerrado). |
 
 - Una **bodega sin dueña** no la ve ningún cliente: se le asigna una ECA desde el backoffice (`PUT /admin/warehouses/{id}/organization`, capacidad `catalogs.manage`, una sola vez y solo a una ECA aprobada). Una ECA crea las suyas con `POST /inventory/warehouses` (solo `eca_admin`).
-- Los recicladores también son alcanzables por el personal de ECA **solo si su asociación está vinculada** a esa ECA.
-- **Decisión de negocio a confirmar con Sebas:** que la ECA solo pese a recicladores de asociaciones vinculadas, y que la asociación lea únicamente lo de sus recicladores y el inventario de sus ECA vinculadas. Cambiarlo es tocar `scope.py` y sus pruebas.
+- En el directorio de usuarios (`GET /users`), el personal de ECA alcanza **solo a los recicladores de asociaciones vinculadas**; para pesar a cualquier otro se usa el buscador por documento (`GET /recyclers/lookup`), que devuelve lo mínimo.
+
+### Quién puede vender a una ECA
+
+Una ECA **debe recibir el material sin importar la afiliación** de quien lo trae (no discriminación, Ley 142 de 1994). Un pesaje (`POST /weighings`) se registra con **uno** de estos dos:
+
+- `recycler_id`: un reciclador registrado, de **cualquier asociación o de ninguna**, verificado o no. Solo se rechaza una cuenta que Somos R haya desactivado (`400 recycler_inactive`).
+- `seller` (`full_name`, `id_type`, `id_number`): una persona **no registrada** (un cliente natural, un reciclador fuera de la plataforma). El pesaje queda con `recycler_id` nulo y los datos mínimos de la persona.
+
+Cada pesaje guarda cómo se relaciona el vendedor con **esa** ECA en el momento de pesar (`affiliation_status`):
+
+| Valor | Cuándo |
+|---|---|
+| `linked` | Reciclador **verificado** de una asociación con vínculo **activo** con la ECA |
+| `unlinked_association` | Reciclador con asociación, pero no vinculada a esa ECA (o aún no verificado) |
+| `independent` | Reciclador sin asociación, o persona no registrada |
+
+**Solo los `linked` llegan a una asociación** (pesajes, compras, estadísticas y la posibilidad de validarlos o pagarlos). Los demás cuentan para el inventario, las compras y los reportes de la ECA, pero ninguna asociación los ve. `GET /weighings?affiliation=` filtra por este valor. `GET /recyclers/lookup?document=` identifica a un reciclador registrado y devuelve su `affiliation` respecto a la ECA que pregunta.
+
+Esto sustituye a la regla anterior («solo reciclador verificado y de asociación vinculada»). **Pregunta abierta de negocio:** si el pesaje de un vendedor fuera del vínculo cuenta para el reporte SUI de la ECA, de la asociación de origen o de ambas.
 
 Notas de comportamiento:
 

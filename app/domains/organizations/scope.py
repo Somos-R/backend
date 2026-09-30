@@ -23,8 +23,9 @@ from app.domains.inventory.models import Warehouse
 from app.domains.organizations.enums import LinkStatus
 from app.domains.organizations.models import EcaAssociationLink
 from app.domains.transactions.models import Transaction
+from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
-from app.domains.weighings.models import Weighing
+from app.domains.weighings.models import AffiliationStatus, Weighing
 
 
 def linked_associations(eca_id: uuid.UUID) -> Select:
@@ -82,7 +83,10 @@ def weighing_scope(actor: User) -> ColumnElement[bool]:
     if actor.user_type_code == "eca":
         return Weighing.warehouse_id.in_(own_warehouses(actor))
     if actor.user_type_code == "association":
-        return Weighing.recycler_id.in_(own_recyclers(actor.organization_id))
+        # Only what was delivered through the link reaches an association: a weighing of one of its
+        # recyclers at an ECA it is not linked to stays with that ECA.
+        return and_(Weighing.affiliation_status == AffiliationStatus.linked,
+                    Weighing.recycler_id.in_(own_recyclers(actor.organization_id)))
     return false()
 
 
@@ -92,9 +96,12 @@ def transaction_scope(actor: User) -> ColumnElement[bool]:
     if actor.user_type_code == "eca":
         return Transaction.warehouse_id.in_(own_warehouses(actor))
     if actor.user_type_code == "association":
-        # Purchases from their recyclers; a sale has no recycler and is the ECA's own business.
-        return and_(Transaction.recycler_id.is_not(None),
-                    Transaction.recycler_id.in_(own_recyclers(actor.organization_id)))
+        # Purchases from their recyclers that came through the link; a sale, or the purchase of material
+        # from someone outside the link, is the ECA's own business.
+        return Transaction.weighing_id.in_(
+            select(Weighing.id).where(
+                Weighing.affiliation_status == AffiliationStatus.linked,
+                Weighing.recycler_id.in_(own_recyclers(actor.organization_id))))
     return false()
 
 
@@ -114,12 +121,13 @@ def get_own_warehouse(db: Session, actor: User, warehouse_id: uuid.UUID) -> Ware
     return warehouse
 
 
-def ensure_recycler_delivers_to(db: Session, eca_id: uuid.UUID | None, recycler: User) -> None:
-    """A recycler delivers to the ECAs their association is linked to, and only to those."""
+def affiliation_of(db: Session, eca_id: uuid.UUID | None, recycler: User) -> AffiliationStatus:
+    """How a registered recycler relates to an ECA: an ECA receives them all, but only a verified recycler
+    of an association linked to it is `linked`."""
+    if recycler.organization_id is None:
+        return AffiliationStatus.independent
     linked = (
-        db.scalar(select(User.id).where(User.id == recycler.id, recycler_linked_to(eca_id)))
-        if eca_id is not None else None)
-    if linked is None:
-        raise ApiError(
-            "recycler_not_linked", status_code=status.HTTP_409_CONFLICT,
-            detail="El reciclador pertenece a una asociación que no está vinculada a tu ECA")
+        eca_id is not None
+        and recycler.verification_status == VerificationStatus.verified
+        and db.scalar(select(User.id).where(User.id == recycler.id, recycler_linked_to(eca_id))) is not None)
+    return AffiliationStatus.linked if linked else AffiliationStatus.unlinked_association

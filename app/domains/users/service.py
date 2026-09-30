@@ -232,6 +232,27 @@ def update_user(db: Session, actor: User, user_id: uuid.UUID, request: UpdateUse
     return user
 
 
+def lookup_recycler(db: Session, actor: User, document: str, id_type: str | None) -> dict:
+    """Find a registered recycler by document, whatever their association: an ECA receives material from
+    anyone, so it must be able to identify them. Returns only what is needed to weigh."""
+    if actor.organization_id is None:
+        raise ApiError("no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu cuenta no está asociada a una organización")
+    query = select(User).where(User.user_type_code == "recycler", User.id_number == document.strip())
+    if id_type:
+        query = query.where(User.id_type == id_type)
+    recycler = db.scalars(query.order_by(User.created_at, User.id)).first()
+    if recycler is None:
+        raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
+    association = db.get(Organization, recycler.organization_id) if recycler.organization_id else None
+    return {
+        "id": recycler.id, "full_name": recycler.full_name, "id_type": recycler.id_type,
+        "id_number": recycler.id_number, "is_active": recycler.is_active,
+        "verification_status": recycler.verification_status, "association": association,
+        "affiliation": scope.affiliation_of(db, actor.organization_id, recycler),
+    }
+
+
 # --- Staff invitations ------------------------------------------------------------------
 # The organization's admin names the person and their role; the person chooses their own password
 # through an emailed one-time link (the same activation used for recyclers). Nobody ever types

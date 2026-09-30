@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domains.inventory.schemas import MaterialResponse, WarehouseResponse
-from app.domains.weighings.models import WeighingStatus
+from app.domains.weighings.models import AffiliationStatus, WeighingStatus
 
 
 class RecyclerSummary(BaseModel):
@@ -19,7 +19,7 @@ class WeighingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id:               uuid.UUID
-    recycler_id:      uuid.UUID
+    recycler_id:      uuid.UUID | None
     material_code:    str
     warehouse_id:     uuid.UUID
     kg:               Decimal
@@ -31,7 +31,13 @@ class WeighingResponse(BaseModel):
     occurred_at:            datetime
     created_at:       datetime
     total_value:      Decimal
-    recycler:         RecyclerSummary
+    # How the seller relates to the ECA. Only `linked` weighings reach an association.
+    affiliation_status: AffiliationStatus
+    recycler:         RecyclerSummary | None
+    # Someone who is not registered: identified by name and document.
+    seller_name:      str | None
+    seller_id_type:   str | None
+    seller_id_number: str | None
     material:         MaterialResponse
     warehouse:        WarehouseResponse
 
@@ -41,8 +47,19 @@ class WeighingListResponse(BaseModel):
     items: list[WeighingResponse]
 
 
+class SellerInput(BaseModel):
+    """The minimum to identify a person who sells material and is not registered in Somos R."""
+
+    full_name: str = Field(min_length=2, max_length=255)
+    id_type: str = Field(min_length=1, max_length=10)
+    id_number: str = Field(min_length=3, max_length=20)
+
+
 class CreateWeighingRequest(BaseModel):
-    recycler_id:   uuid.UUID
+    """Who delivers: a registered recycler (`recycler_id`) or a person identified by `seller`. Exactly one."""
+
+    recycler_id:   uuid.UUID | None = None
+    seller:        SellerInput | None = None
     material_code: str
     warehouse_id:  uuid.UUID
     kg:            Decimal
@@ -54,6 +71,12 @@ class CreateWeighingRequest(BaseModel):
         if v <= 0:
             raise ValueError("El valor debe ser mayor que cero")
         return v
+
+    @model_validator(mode="after")
+    def exactly_one_seller(self):
+        if (self.recycler_id is None) == (self.seller is None):
+            raise ValueError("Indica `recycler_id` (reciclador registrado) o `seller` (persona no registrada), no ambos ni ninguno")
+        return self
 
 
 class UpdateWeighingStatusRequest(BaseModel):

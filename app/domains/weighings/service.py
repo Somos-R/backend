@@ -7,26 +7,22 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.domains.inventory import service as inventory_service
-from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 from app.domains.weighings.models import Weighing, WeighingStatus
 
 
-def ensure_recycler_can_deliver(recycler: User | None) -> None:
-    """A weighing needs a recycler who is verified and whose account is active.
+def ensure_recycler_is_active(recycler: User) -> None:
+    """An ECA receives material whoever brings it, verified or not, from any association or none. The only
+    exception is an account that Somos R itself has deactivated.
 
-    Checked when the weighing is registered and again when it is validated, because the
-    recycler may have been rejected or deactivated in between (validating creates a purchase
-    that is owed to them).
+    Checked when the weighing is registered and again when it is validated, because the account may have
+    been deactivated in between (validating creates a purchase that is owed to them).
     """
-    if (
-        recycler is None
-        or not recycler.is_active
-        or recycler.verification_status != VerificationStatus.verified
-    ):
-        raise ApiError("recycler_not_verified", 
+    if not recycler.is_active:
+        raise ApiError(
+            "recycler_inactive",
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El reciclador no está verificado o su cuenta está desactivada",
+            detail="La cuenta del reciclador está desactivada",
         )
 
 
@@ -42,7 +38,8 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Solo se pueden validar pesajes en estado 'pending_validation'. Estado actual: {weighing.status}",
         )
-    ensure_recycler_can_deliver(weighing.recycler)
+    if weighing.recycler is not None:
+        ensure_recycler_is_active(weighing.recycler)
 
     weighing.status        = WeighingStatus.validated
     weighing.validated_by  = validator_id
