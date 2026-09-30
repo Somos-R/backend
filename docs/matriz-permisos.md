@@ -114,6 +114,7 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 | `transactions.view` | assoc admin, eca admin, eca báscula, eca bodega |
 | `transactions.create`, `transactions.manage` | eca admin, eca bodega |
 | `audit.view` | assoc admin |
+| `staff.invite`, `staff.view` | assoc admin, eca admin |
 
 Un usuario sin rol, o con un rol que no corresponde a su tipo, recibe la lista vacía.
 

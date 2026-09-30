@@ -98,6 +98,11 @@ class User(Base):
     commercial_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rep_goals: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    @property
+    def pending_activation(self) -> bool:
+        """Invited (or a verified recycler) and has not chosen a password yet."""
+        return self.password_hash == "" and self.user_type_code in ("recycler", "eca", "association")
+
     # --- eca / association staff ---
     # The organization this person works for. Nullable while onboarding is being built: accounts
     # created before it (or registered anonymously) have none and, having no role, no permissions.

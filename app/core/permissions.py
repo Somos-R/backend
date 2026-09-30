@@ -69,6 +69,8 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "transactions.manage": TRANSACTIONS_WRITE,
     "transactions.pay": PAYMENTS,
     "audit.view": AUDIT_READ,
+    "staff.invite": ORG_ADMINS,  # POST /users/invitations and .../invitation/resend
+    "staff.view": ORG_ADMINS,  # only admins see their organization's staff (visible_user_types)
 }
 
 # What Somos R's own roles may do, by capability. Endpoints of the backoffice ask for a capability,

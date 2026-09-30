@@ -316,3 +316,42 @@ class TestLimits:
             assert statuses == [201, 201, 429, 429]
         finally:
             limiter.reset()
+
+
+class TestWhatTheWebNeeds:
+    def test_only_organization_admins_are_told_they_can_invite_and_see_staff(self, client_as, db, eca):
+        caps = client_as(eca[1]).get("/auth/me").json()["capabilities"]
+        assert {"staff.invite", "staff.view"} <= set(caps)
+        operator = factories.make_user(db, "eca", role_code="eca_operator", organization_id=eca[0].id)
+        caps = client_as(operator).get("/auth/me").json()["capabilities"]
+        assert not {"staff.invite", "staff.view"} & set(caps)
+
+    def test_pending_activation_tells_an_invitee_from_someone_active(self, client_as, client, eca, outbox):
+        payload = _payload()
+        invited = client_as(eca[1]).post("/users/invitations", json=payload).json()
+        assert invited["pending_activation"] is True
+        items = {i["id"]: i for i in client_as(eca[1]).get("/users", params={"user_type_code": "eca"}).json()["items"]}
+        assert items[invited["id"]]["pending_activation"] is True
+        assert items[str(eca[1].id)]["pending_activation"] is False
+        client.post("/auth/activate", json={"token": _token_from(outbox[-1]), "password": NEW_PASSWORD})
+        assert client_as(eca[1]).get(f"/users/{invited['id']}").json()["pending_activation"] is False
+
+    def test_someone_who_registered_alone_and_has_not_confirmed_their_email_is_not_pending(self, client_as, db, eca):
+        unverified = factories.make_user(db, "eca", role_code="eca_operator", organization_id=eca[0].id,
+                                         email_verified_at=None)
+        assert client_as(eca[1]).get(f"/users/{unverified.id}").json()["pending_activation"] is False
+
+    def test_the_list_can_be_narrowed_by_role(self, client_as, eca):
+        client_as(eca[1]).post("/users/invitations", json=_payload("eca_warehouse"))
+        items = client_as(eca[1]).get("/users", params={"user_type_code": "eca", "role_code": "eca_warehouse"}).json()["items"]
+        assert items and all(i["role_code"] == "eca_warehouse" for i in items)
+
+    def test_the_role_catalog_says_which_type_each_role_belongs_to(self, client):
+        roles = {r["code"]: r["user_type_code"] for r in client.get("/catalogs/roles").json()}
+        assert roles["eca_operator"] == "eca" and roles["association_admin"] == "association"
+        assert "platform_admin" not in roles
+
+    def test_the_model_flag_matches_the_types_activation_accepts(self):
+        from app.domains.auth.service import ACTIVATABLE_TYPES
+
+        assert ACTIVATABLE_TYPES == {"recycler", "eca", "association"}
