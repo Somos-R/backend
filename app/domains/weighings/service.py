@@ -3,12 +3,25 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
+from app.core import search
 from app.core.errors import ApiError
+from app.core.pagination import paginate
+from app.core.permissions import forbidden
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
+from app.domains.catalogs.models import DocumentType
 from app.domains.inventory import service as inventory_service
+from app.domains.inventory.models import Material
+from app.domains.organizations import scope
 from app.domains.users.models import User
-from app.domains.weighings.models import Weighing, WeighingStatus
+from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
+from app.domains.weighings.schemas import (
+    CreateWeighingRequest,
+    UpdateWeighingStatusRequest,
+)
 
 
 def ensure_recycler_is_active(recycler: User) -> None:
@@ -82,4 +95,174 @@ def mark_paid(db: Session, weighing: Weighing) -> Weighing:
         )
     weighing.status     = WeighingStatus.paid
     weighing.updated_at = datetime.now(timezone.utc)
+    return weighing
+
+
+def list_weighings(
+    db: Session,
+    actor: User,
+    *,
+    recycler_id: uuid.UUID | None,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: WeighingStatus | None,
+    affiliation: AffiliationStatus | None,
+    q: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[Weighing]]:
+    """One page of what the actor may read; a recycler only ever gets their own."""
+    if actor.user_type_code == "recycler":
+        if recycler_id and recycler_id != actor.id:
+            raise forbidden()
+        recycler_id = actor.id
+
+    query = select(Weighing)
+    if actor.user_type_code != "recycler":
+        query = query.where(scope.weighing_scope(actor))
+
+    if recycler_id:
+        query = query.where(Weighing.recycler_id == recycler_id)
+    if material_code:
+        query = query.where(Weighing.material_code == material_code)
+    if warehouse_id:
+        query = query.where(Weighing.warehouse_id == warehouse_id)
+    if status_:
+        query = query.where(Weighing.status == status_)
+    if affiliation:
+        query = query.where(Weighing.affiliation_status == affiliation)
+    # Text search over who delivered: the registered recycler's name and document, or the name and document
+    # of an unregistered seller. It narrows the list; it never widens what the actor may already see.
+    recycler_match = search.contains(q, [User.full_name, User.id_number])
+    seller_match = search.contains(q, [Weighing.seller_name, Weighing.seller_id_number])
+    if recycler_match is not None and seller_match is not None:
+        query = query.where(or_(Weighing.recycler_id.in_(select(User.id).where(recycler_match)), seller_match))
+
+    return paginate(
+        db, query, Weighing.occurred_at.desc(), Weighing.id, limit=limit, offset=offset,
+        options=(
+            selectinload(Weighing.recycler),
+            selectinload(Weighing.material),
+            selectinload(Weighing.warehouse),
+        ),
+    )
+
+
+def month_stats(db: Session, actor: User) -> tuple[int, Decimal, int, list[tuple[str, Decimal]]]:
+    """(weighings this month, kg this month, pending validation, kg by material this month), all in SQL."""
+    now = datetime.now(timezone.utc)
+    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    this_month = Weighing.occurred_at >= start
+    mine = scope.weighing_scope(actor)
+
+    count_month, total_kg = db.execute(
+        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(this_month, mine)
+    ).one()
+    pending = db.scalar(
+        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation, mine)
+    ) or 0
+    by_material = db.execute(
+        select(Weighing.material_code, func.sum(Weighing.kg))
+        .where(this_month, mine)
+        .group_by(Weighing.material_code)
+        .order_by(Weighing.material_code)
+    ).all()
+    return count_month, total_kg, pending, [(material, kg) for material, kg in by_material]
+
+
+def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) -> Weighing:
+    recycler = None
+    if request.recycler_id is not None:
+        recycler = db.get(User, request.recycler_id)
+        if not recycler or recycler.user_type_code != "recycler":
+            raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
+        ensure_recycler_is_active(recycler)
+    elif request.seller is not None and db.get(DocumentType, request.seller.id_type) is None:
+        raise ApiError("invalid_id_type", status_code=422, detail=f"id_type '{request.seller.id_type}' no es válido")
+
+    if not db.get(Material, request.material_code):
+        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+
+    # Only in a warehouse of the actor's own ECA. The ECA receives the material whoever brings it; how the
+    # seller relates to the ECA (linked, another association's, independent) is recorded, and decides
+    # whether the weighing reaches an association.
+    warehouse = scope.get_own_warehouse(db, actor, request.warehouse_id)
+    affiliation = (
+        scope.affiliation_of(db, warehouse.organization_id, recycler) if recycler is not None
+        else AffiliationStatus.independent)
+    seller = request.seller
+
+    weighing = Weighing(
+        id=uuid.uuid4(),
+        recycler_id=request.recycler_id,
+        seller_name=seller.full_name.strip() if seller else None,
+        seller_id_type=seller.id_type if seller else None,
+        seller_id_number=seller.id_number if seller else None,
+        affiliation_status=affiliation,
+        material_code=request.material_code,
+        warehouse_id=request.warehouse_id,
+        kg=request.kg,
+        price_per_kg=request.price_per_kg,
+    )
+    db.add(weighing)
+    audit.record(
+        db, Action.WEIGHING_CREATED, actor=actor, target_type="weighing", target_id=weighing.id,
+        details={"recycler_id": str(request.recycler_id) if request.recycler_id else None,
+                 "walk_in": seller is not None, "affiliation": affiliation.value,
+                 "material": request.material_code, "kg": str(request.kg), "price_per_kg": str(request.price_per_kg)})
+    db.commit()
+    db.refresh(weighing)
+    return weighing
+
+
+def get_weighing(db: Session, actor: User, weighing_id: uuid.UUID) -> Weighing:
+    """The weighing if the actor may read it. Someone else's weighing gets the same answer as a missing
+    one: a recycler's peers, another ECA, another association."""
+    weighing = db.get(Weighing, weighing_id)
+    outside = (
+        weighing is not None
+        and (weighing.recycler_id != actor.id if actor.user_type_code == "recycler"
+             else db.scalar(select(Weighing.id).where(Weighing.id == weighing_id, scope.weighing_scope(actor))) is None)
+    )
+    if not weighing or outside:
+        raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
+    return weighing
+
+
+def update_status(db: Session, actor: User, weighing_id: uuid.UUID, request: UpdateWeighingStatusRequest) -> Weighing:
+    # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
+    weighing = db.scalars(
+        select(Weighing).where(Weighing.id == weighing_id, scope.weighing_scope(actor)).with_for_update()
+    ).first()
+    if not weighing:
+        raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
+
+    previous = weighing.status.value
+
+    if request.status == WeighingStatus.validated:
+        validate_weighing(db, weighing, actor.id)
+    elif request.status == WeighingStatus.rejected:
+        if not request.rejection_reason:
+            raise ApiError(
+                "rejection_reason_required",
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="rejection_reason es requerido al rechazar",
+            )
+        reject_weighing(db, weighing, request.rejection_reason)
+    elif request.status == WeighingStatus.paid:
+        mark_paid(db, weighing)
+    else:
+        raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de status no válida")
+
+    audit.record(
+        db,
+        {WeighingStatus.validated: Action.WEIGHING_VALIDATED, WeighingStatus.rejected: Action.WEIGHING_REJECTED,
+         WeighingStatus.paid: Action.WEIGHING_PAID}[request.status],
+        actor=actor, target_type="weighing", target_id=weighing.id,
+        details={"from": previous, "material": weighing.material_code, "kg": str(weighing.kg),
+                 "price_per_kg": str(weighing.price_per_kg),
+                 "recycler_id": str(weighing.recycler_id) if weighing.recycler_id else None})
+    db.commit()
+    db.refresh(weighing)
     return weighing

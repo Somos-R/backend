@@ -10,12 +10,23 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
-from app.domains.inventory.models import InventoryItem
+from app.core.pagination import paginate
+from app.domains.audit import service as audit
+from app.domains.audit.actions import Action
+from app.domains.inventory.models import InventoryItem, Material, Warehouse
+from app.domains.inventory.schemas import (
+    CreateWarehouseRequest,
+    UpdateInventoryItemRequest,
+)
+from app.domains.organizations import scope
+from app.domains.organizations.enums import OrganizationStatus
+from app.domains.organizations.models import Organization
+from app.domains.users.models import User
 
 
 def _reload(db: Session, item_id: uuid.UUID) -> InventoryItem:
@@ -100,3 +111,105 @@ def subtract_stock(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"Stock insuficiente: disponible {item.stock_kg} kg, solicitado {kg} kg",
     )
+
+
+def list_inventory(
+    db: Session,
+    actor: User,
+    *,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: str | None,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[InventoryItem]]:
+    query = select(InventoryItem).where(scope.inventory_scope(actor, InventoryItem.warehouse_id))
+
+    if material_code:
+        query = query.where(InventoryItem.material_code == material_code)
+    if warehouse_id:
+        query = query.where(InventoryItem.warehouse_id == warehouse_id)
+    if status_:
+        query = query.where(InventoryItem.status == status_)
+
+    return paginate(
+        db, query,
+        # warehouse_id breaks ties so that pages never overlap or skip rows
+        InventoryItem.material_code, InventoryItem.warehouse_id,
+        limit=limit, offset=offset,
+        options=(selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse)),
+    )
+
+
+def stats(db: Session, actor: User) -> tuple[Decimal, Decimal, dict[str, int]]:
+    """(total kg, total value, item count by status) of what the actor may see, all in SQL."""
+    visible = scope.inventory_scope(actor, InventoryItem.warehouse_id)
+    total_stock, total_value = db.execute(select(
+        func.coalesce(func.sum(InventoryItem.stock_kg), 0),
+        func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.price_per_kg), 0),
+    ).where(visible)).one()
+    by_status: dict[str, int] = {
+        status_: count
+        for status_, count in db.execute(
+            select(InventoryItem.status, func.count(InventoryItem.id)).where(visible).group_by(InventoryItem.status)
+        ).all()
+    }
+    return total_stock, total_value, by_status
+
+
+def list_warehouses(db: Session, actor: User) -> list[Warehouse]:
+    return list(db.scalars(select(Warehouse).where(
+        Warehouse.is_active.is_(True), scope.warehouse_scope(actor)).order_by(Warehouse.name, Warehouse.id)).all())
+
+
+def create_warehouse(db: Session, actor: User, body: CreateWarehouseRequest) -> Warehouse:
+    """A warehouse of the actor's own ECA. Everything that happens in it (inventory, weighings, sales)
+    belongs to that ECA."""
+    organization = db.get(Organization, actor.organization_id) if actor.organization_id else None
+    if organization is None:
+        raise ApiError("no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu cuenta no está asociada a una organización")
+    if organization.status != OrganizationStatus.approved:
+        raise ApiError("organization_not_active", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu organización no está activa")
+    warehouse = Warehouse(name=body.name.strip(), address=body.address, organization_id=organization.id)
+    db.add(warehouse)
+    db.flush()
+    audit.record(db, Action.WAREHOUSE_CREATED, actor=actor, target_type="warehouse", target_id=warehouse.id)
+    db.commit()
+    db.refresh(warehouse)
+    return warehouse
+
+
+def list_materials(db: Session) -> list[Material]:
+    return list(db.scalars(select(Material).where(Material.is_active.is_(True)).order_by(Material.label)).all())
+
+
+def get_item(db: Session, actor: User, item_id: uuid.UUID) -> InventoryItem:
+    item = db.scalars(select(InventoryItem).where(
+        InventoryItem.id == item_id, scope.inventory_scope(actor, InventoryItem.warehouse_id))).first()
+    if not item:
+        raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
+    return item
+
+
+def update_item(db: Session, actor: User, item_id: uuid.UUID, request: UpdateInventoryItemRequest) -> InventoryItem:
+    item = db.scalars(select(InventoryItem).where(
+        InventoryItem.id == item_id, scope.inventory_write_scope(actor, InventoryItem.warehouse_id))).first()
+    if not item:
+        raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
+
+    changes: dict[str, list[str]] = {}
+    if request.stock_min_kg is not None:
+        changes["stock_min_kg"] = [str(item.stock_min_kg), str(request.stock_min_kg)]
+        item.stock_min_kg = request.stock_min_kg
+    if request.price_per_kg is not None:
+        changes["price_per_kg"] = [str(item.price_per_kg), str(request.price_per_kg)]
+        item.price_per_kg = request.price_per_kg
+
+    if changes:
+        audit.record(db, Action.INVENTORY_UPDATED, actor=actor, target_type="inventory_item",
+                     target_id=item.id, details={"material": item.material_code, "changes": changes})
+    db.commit()
+    db.refresh(item)
+    return item
