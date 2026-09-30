@@ -83,6 +83,8 @@ class UserDetailResponse(BaseModel):
     role_code: str | None
     is_active: bool
     email_verified_at: datetime | None
+    # Invited and has not chosen a password yet: the moment to offer "resend invitation".
+    pending_activation: bool
     created_at: datetime
     updated_at: datetime
 
