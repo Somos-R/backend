@@ -20,6 +20,7 @@ from app.domains.users.docs import (
     LIST_USERS_DOCS,
     RECYCLER_LOOKUP_DOCS,
     RESEND_INVITATION_DOCS,
+    SET_STAFF_STATUS_DOCS,
     UPDATE_RECYCLER_STATUS_DOCS,
     UPDATE_USER_DOCS,
 )
@@ -27,6 +28,7 @@ from app.domains.users.models import User
 from app.domains.users.schemas import (
     InviteStaffRequest,
     RecyclerLookupResponse,
+    SetStaffActiveRequest,
     UpdateRecyclerStatusRequest,
     UpdateUserRequest,
     UserDetailResponse,
@@ -93,6 +95,16 @@ def resend_invitation(
     background_tasks.add_task(
         auth_service.send_staff_invitation_email, user.email, user.full_name, organization_name, token)
     return user
+
+
+@router.patch("/{user_id}/status", response_model=UserDetailResponse, **SET_STAFF_STATUS_DOCS)
+def set_staff_status(
+    user_id: uuid.UUID,
+    request: SetStaffActiveRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*ORG_ADMINS)),
+):
+    return users_service.set_staff_active(db, actor, user_id, request.is_active, request.reason)
 
 
 @router.get("/{user_id}", response_model=UserDetailResponse, **GET_USER_DOCS)

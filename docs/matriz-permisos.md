@@ -153,7 +153,7 @@ Solo concierne a sus dos organizaciones: cualquier otra recibe **404 `link_not_f
 | `transactions.view` | assoc admin, eca admin, eca báscula, eca bodega |
 | `transactions.create`, `transactions.manage` | eca admin, eca bodega |
 | `audit.view` | assoc admin |
-| `staff.invite`, `staff.view` | assoc admin, eca admin |
+| `staff.invite`, `staff.view`, `staff.manage` | assoc admin, eca admin |
 | `links.request` | eca admin |
 | `links.decide` | assoc admin |
 | `links.view` | assoc admin, eca admin |

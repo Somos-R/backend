@@ -142,6 +142,11 @@ class RecyclerLookupResponse(BaseModel):
     affiliation: AffiliationStatus
 
 
+class SetStaffActiveRequest(BaseModel):
+    is_active: bool
+    reason: str | None = Field(default=None, max_length=200)
+
+
 class InviteStaffRequest(BaseModel):
     """Invite a person to the organization of whoever sends this. They choose their own password."""
 
