@@ -70,6 +70,9 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "transactions.pay": PAYMENTS,
     "audit.view": AUDIT_READ,
     "staff.invite": ORG_ADMINS,  # POST /users/invitations and .../invitation/resend
+    "links.request": frozenset({ECA_ADMIN}),  # an ECA asks an Association to link
+    "links.decide": frozenset({ASSOC_ADMIN}),  # the Association accepts or rejects
+    "links.view": ORG_ADMINS,  # see the links of your own organization (either side may remove one)
     "staff.view": ORG_ADMINS,  # only admins see their organization's staff (visible_user_types)
 }
 

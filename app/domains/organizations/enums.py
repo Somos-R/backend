@@ -6,6 +6,15 @@ class OrganizationType(str, enum.Enum):
     eca = "eca"
 
 
+class LinkStatus(str, enum.Enum):
+    """A link between an ECA and an Association. The ECA asks; the Association decides."""
+
+    requested = "requested"
+    active = "active"
+    rejected = "rejected"
+    removed = "removed"  # withdrawn by either side (or the ECA cancelled its request)
+
+
 class OrganizationStatus(str, enum.Enum):
     """Where an organization is in its onboarding. Only `approved` organizations operate."""
 

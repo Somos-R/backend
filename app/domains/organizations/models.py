@@ -1,12 +1,26 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Index, String, Text, func, text
+from sqlalchemy import (
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.domains.organizations.enums import OrganizationStatus, OrganizationType
+from app.domains.organizations.enums import (
+    LinkStatus,
+    OrganizationStatus,
+    OrganizationType,
+)
 
 
 class Organization(Base):
@@ -42,3 +56,36 @@ class Organization(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class EcaAssociationLink(Base):
+    """Many-to-many between ECAs and Associations, always started by the ECA and decided by the Association.
+
+    One row per pair: asking again after a rejection or a removal reuses it (the history lives in the
+    audit trail). Only an `active` link makes the Association's recyclers deliver to that ECA.
+    """
+
+    __tablename__ = "eca_association_links"
+    __table_args__ = (
+        UniqueConstraint("eca_id", "association_id", name="uq_eca_association_link"),
+        Index("ix_eca_association_links_association", "association_id", "status"),
+        Index("ix_eca_association_links_eca", "eca_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    eca_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    association_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    status: Mapped[LinkStatus] = mapped_column(
+        Enum(LinkStatus, name="link_status"), server_default=LinkStatus.requested.value,
+        default=LinkStatus.requested, nullable=False)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    eca: Mapped[Organization] = relationship("Organization", foreign_keys=[eca_id])
+    association: Mapped[Organization] = relationship("Organization", foreign_keys=[association_id])

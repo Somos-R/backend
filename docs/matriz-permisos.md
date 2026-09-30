@@ -55,6 +55,9 @@ Reglas generales:
 | `PATCH /transactions/{id}/status` → `cancelled` / `delivered` | — | — | — | ✅ | — | ✅ | — | — |
 | `PATCH /transactions/{id}/status` → `paid` | ✅ | — | — | ✅ | — | — | — | — |
 | `GET /audit-log` | ✅ | — | — | — | — | — | — | — |
+| `GET /directory/associations`, `POST /links` (solicitar) | — | — | — | ✅ | — | — | — | — |
+| `GET /links` (los de su organización), `POST /links/{id}/remove` | ✅ | — | — | ✅ | — | — | — | — |
+| `POST /links/{id}/accept`, `/reject` | ✅ | — | — | — | — | — | — | — |
 
 ## Alcance por organización
 
@@ -97,6 +100,12 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 - `GET /admin/me` devuelve el perfil, las capacidades del rol y el estado del segundo factor.
 - **`GET /admin/audit-log`** (capacidad `audit.read`): el registro de auditoría **completo**, de todas las organizaciones y de las cuentas de Somos R, con los filtros de `GET /audit-log` más `actor_role` y `organization_id`. Cada consulta queda auditada (`admin.audit_viewed`, con los nombres de los filtros usados y no sus valores).
 
+## Vínculos ECA ↔ Asociación
+
+Relación de varios a varios **entre organizaciones**: una ECA puede vincularse a varias asociaciones y una asociación recibir a varias ECA. **La ECA siempre inicia** (`POST /links` con el id de una asociación aprobada, que sale del directorio) y **el administrador de la asociación decide** (`accept` / `reject`, con motivo opcional). Cualquiera de las dos partes puede retirar un vínculo activo; la ECA también puede cancelar su solicitud sin respuesta. Estados: `requested` → `active` / `rejected` → (`removed`); tras un rechazo o un retiro la ECA puede volver a solicitar (se reabre la misma fila; el historial está en la auditoría: `link.requested`, `link.accepted`, `link.rejected`, `link.removed`).
+
+Solo concierne a sus dos organizaciones: cualquier otra recibe **404 `link_not_found`**. Del otro lado solo se ve el nombre y la ciudad. Exige organización aprobada (403 `organization_not_active`). **Hoy el vínculo no cambia lo que cada quien ve de los datos operativos**: eso llega con la tarea 6.17.
+
 ## Capacidades (`GET /auth/me`)
 
 `GET /auth/me` devuelve el perfil y `capabilities`, la lista de lo que el usuario puede hacer, calculada con el mismo módulo de permisos que protege los endpoints (`CAPABILITIES` en `app/core/permissions.py`). Una capacidad existe solo si un endpoint la exige. Es una ayuda para la interfaz, no una barrera: los endpoints siguen respondiendo 403.
@@ -115,6 +124,9 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 | `transactions.create`, `transactions.manage` | eca admin, eca bodega |
 | `audit.view` | assoc admin |
 | `staff.invite`, `staff.view` | assoc admin, eca admin |
+| `links.request` | eca admin |
+| `links.decide` | assoc admin |
+| `links.view` | assoc admin, eca admin |
 
 Un usuario sin rol, o con un rol que no corresponde a su tipo, recibe la lista vacía.
 

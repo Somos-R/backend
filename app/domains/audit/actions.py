@@ -42,6 +42,12 @@ class Action:
     USER_SESSIONS_REVOKED = "user.sessions_revoked"
     USER_ORGANIZATION_ASSIGNED = "user.organization_assigned"
 
+    # --- ECA <-> Association links ---
+    LINK_REQUESTED = "link.requested"
+    LINK_ACCEPTED = "link.accepted"
+    LINK_REJECTED = "link.rejected"
+    LINK_REMOVED = "link.removed"
+
     # --- Weighings ---
     WEIGHING_CREATED = "weighing.created"
     WEIGHING_VALIDATED = "weighing.validated"
