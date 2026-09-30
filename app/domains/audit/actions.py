@@ -27,6 +27,7 @@ class Action:
     ADMIN_RECOVERY_CODES_REGENERATED = "admin.recovery_codes_regenerated"
     ADMIN_MFA_RESET = "admin.mfa_reset"
     ADMIN_AUDIT_VIEWED = "admin.audit_viewed"
+    ADMIN_USER_VIEWED = "admin.user_viewed"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
@@ -35,6 +36,11 @@ class Action:
     USER_ROLE_CHANGED = "user.role_changed"
     USER_INVITED = "user.invited"
     USER_INVITATION_RESENT = "user.invitation_resent"
+    USER_ACTIVATED = "user.activated"
+    USER_DEACTIVATED = "user.deactivated"
+    USER_UNLOCKED = "user.unlocked"
+    USER_SESSIONS_REVOKED = "user.sessions_revoked"
+    USER_ORGANIZATION_ASSIGNED = "user.organization_assigned"
 
     # --- Weighings ---
     WEIGHING_CREATED = "weighing.created"

@@ -55,6 +55,15 @@ def _search_term(q: str | None) -> str | None:
     return f"%{escaped}%"
 
 
+def search_clause(q: str | None) -> ColumnElement[bool] | None:
+    """SQL for the text search over name, document and email; None when `q` is empty or too short."""
+    term = _search_term(q)
+    if term is None:
+        return None
+    pattern = func.unaccent(term)
+    return or_(*(func.unaccent(column).ilike(pattern, escape="\\") for column in _SEARCH_COLUMNS))
+
+
 def _in_scope_clause(actor: User) -> ColumnElement[bool]:
     """SQL twin of `in_scope`: people who are not staff, plus the staff of the actor's own organization."""
     if actor.organization_id is None:
@@ -91,11 +100,9 @@ def list_users(
         query = query.where(User.role_code == role_code)
     if verification_status:
         query = query.where(User.verification_status == verification_status)
-    term = _search_term(q)
-    if term:
-        pattern = func.unaccent(term)
-        query = query.where(or_(*(
-            func.unaccent(column).ilike(pattern, escape="\\") for column in _SEARCH_COLUMNS)))
+    text_match = search_clause(q)
+    if text_match is not None:
+        query = query.where(text_match)
 
     return paginate(db, query, User.created_at.desc(), User.id, limit=limit, offset=offset)
 
