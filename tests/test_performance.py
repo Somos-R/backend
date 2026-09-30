@@ -18,7 +18,7 @@ from app.domains.transactions.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.domains.weighings.models import Weighing, WeighingStatus
+from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
 from tests import factories
 
 MATERIALS = ["paper", "plastic", "glass", "metal", "cardboard", "electronic", "organic"]
@@ -43,7 +43,7 @@ def _orm_loads(*models):
 
 def _add_weighings(db, warehouse, recycler, count, material="plastic", kg="10", **extra):
     rows = [Weighing(recycler_id=recycler.id, material_code=material, warehouse_id=warehouse.id,
-                     kg=Decimal(kg), price_per_kg=Decimal("100"), **extra) for _ in range(count)]
+                     kg=Decimal(kg), price_per_kg=Decimal("100"), affiliation_status=AffiliationStatus.linked, **extra) for _ in range(count)]
     db.add_all(rows)
     db.commit()
     return rows
@@ -70,7 +70,7 @@ def _varied_weighings(db, count):
             recycler_id=factories.make_user(db, "recycler").id,
             material_code=MATERIALS[i % len(MATERIALS)],
             warehouse_id=warehouses[i % len(warehouses)].id,
-            kg=Decimal("10"), price_per_kg=Decimal("100"))
+            kg=Decimal("10"), price_per_kg=Decimal("100"), affiliation_status=AffiliationStatus.linked)
         for i in range(count)
     ]
     db.add_all(rows)

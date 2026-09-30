@@ -4,7 +4,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.permissions import ORG_ADMINS, USERS_DIRECTORY, VERIFY_RECYCLERS
+from app.core.permissions import (
+    ORG_ADMINS,
+    USERS_DIRECTORY,
+    VERIFY_RECYCLERS,
+    WEIGHINGS_CREATE,
+)
 from app.core.rate_limit import limiter, register_limit
 from app.core.security import get_current_user, require_roles
 from app.domains.auth import service as auth_service
@@ -13,6 +18,7 @@ from app.domains.users.docs import (
     GET_USER_DOCS,
     INVITE_STAFF_DOCS,
     LIST_USERS_DOCS,
+    RECYCLER_LOOKUP_DOCS,
     RESEND_INVITATION_DOCS,
     UPDATE_RECYCLER_STATUS_DOCS,
     UPDATE_USER_DOCS,
@@ -20,6 +26,7 @@ from app.domains.users.docs import (
 from app.domains.users.models import User
 from app.domains.users.schemas import (
     InviteStaffRequest,
+    RecyclerLookupResponse,
     UpdateRecyclerStatusRequest,
     UpdateUserRequest,
     UserDetailResponse,
@@ -27,6 +34,19 @@ from app.domains.users.schemas import (
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
+recyclers_router = APIRouter(prefix="/recyclers", tags=["recyclers"])
+
+
+@recyclers_router.get("/lookup", response_model=RecyclerLookupResponse, **RECYCLER_LOOKUP_DOCS)
+@limiter.limit(register_limit)
+def lookup_recycler(
+    request: Request,
+    document: str = Query(min_length=3, max_length=20),
+    id_type: str | None = Query(default=None, max_length=10),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*WEIGHINGS_CREATE)),
+):
+    return users_service.lookup_recycler(db, actor, document, id_type)
 
 
 @router.get("", response_model=UserListResponse, **LIST_USERS_DOCS)

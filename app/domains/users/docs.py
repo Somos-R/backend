@@ -227,3 +227,23 @@ activó su cuenta. Queda auditado (`user.invitation_resent`).
         409: {"description": "La persona ya activó su cuenta"},
     },
 }
+
+
+RECYCLER_LOOKUP_DOCS: dict[str, Any] = {
+    "summary": "Identificar a un reciclador por su documento",
+    "description": """
+Para el momento de pesar: busca a un reciclador **registrado** por su número de documento, de **cualquier
+asociación** o de ninguna, porque una ECA recibe el material de quien lo traiga. Devuelve solo lo necesario
+para pesar: nombre, documento, si su cuenta está activa, su estado de verificación, su asociación (nombre y
+ciudad) y `affiliation` **respecto a tu ECA**:
+
+- `linked`: reciclador verificado de una asociación con vínculo activo con tu ECA.
+- `unlinked_association`: tiene asociación, pero no vinculada a tu ECA (o aún no está verificado).
+- `independent`: no tiene asociación.
+
+Ningún dato de contacto. `404 recycler_not_found` si no está registrado: en ese caso se puede pesar
+identificando a la persona con `seller` en `POST /weighings`.
+
+**Quién puede:** quienes registran pesajes (`eca_admin`, `eca_operator`). `id_type` es opcional.
+""",
+}

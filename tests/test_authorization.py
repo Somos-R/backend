@@ -11,7 +11,7 @@ import pytest
 from app.domains.transactions import service as tx_service
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
-from app.domains.weighings.models import Weighing
+from app.domains.weighings.models import AffiliationStatus, Weighing
 from tests import factories
 from tests.factories import ACTORS, make_actor
 
@@ -34,7 +34,7 @@ def world(db, warehouse):
 
     weighing = Weighing(
         recycler_id=other_recycler.id, material_code="plastic", warehouse_id=warehouse.id,
-        kg=Decimal("10"), price_per_kg=Decimal("100"))
+        kg=Decimal("10"), price_per_kg=Decimal("100"), affiliation_status=AffiliationStatus.linked)
     db.add(weighing)
     admin = factories.make_actor(db, "eca_admin")
     sale = tx_service.create_sale(

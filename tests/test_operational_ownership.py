@@ -205,35 +205,38 @@ class TestWeighing:
     def test_not_in_a_warehouse_nobody_owns(self, client_as, w):
         assert _weigh(client_as, w.a, w.r1, w.orphan_wh).json()["code"] == "warehouse_not_found"
 
-    def test_not_a_recycler_of_an_association_that_is_not_linked_to_it(self, client_as, w):
+    def test_a_recycler_of_an_association_that_is_not_linked_is_received_too(self, client_as, w):
         r = _weigh(client_as, w.a, w.r2, w.wa)
-        assert r.status_code == 409 and r.json()["code"] == "recycler_not_linked"
+        assert r.status_code == 201 and r.json()["affiliation_status"] == "unlinked_association"
 
-    def test_not_a_recycler_without_an_association(self, client_as, db, w):
+    def test_a_recycler_without_an_association_is_received_as_independent(self, client_as, db, w):
         loose = factories.make_user(db, "recycler", organization_id=None)
-        assert _weigh(client_as, w.a, loose, w.wa).json()["code"] == "recycler_not_linked"
+        r = _weigh(client_as, w.a, loose, w.wa)
+        assert r.status_code == 201 and r.json()["affiliation_status"] == "independent"
 
-    def test_the_link_must_be_active_at_that_moment(self, client_as, db, w):
+    def test_the_affiliation_follows_the_link_at_that_moment(self, client_as, db, w):
+        assert _weigh(client_as, w.a, w.r1, w.wa).json()["affiliation_status"] == "linked"
         w.link_ax.status = LinkStatus.removed
         db.commit()
-        assert _weigh(client_as, w.a, w.r1, w.wa).json()["code"] == "recycler_not_linked"
+        assert _weigh(client_as, w.a, w.r1, w.wa).json()["affiliation_status"] == "unlinked_association"
         w.link_ax.status = LinkStatus.requested
         db.commit()
-        assert _weigh(client_as, w.a, w.r1, w.wa).json()["code"] == "recycler_not_linked"
+        assert _weigh(client_as, w.a, w.r1, w.wa).json()["affiliation_status"] == "unlinked_association"
         w.link_ax.status = LinkStatus.active
         db.commit()
-        assert _weigh(client_as, w.a, w.r1, w.wa).status_code == 201
+        assert _weigh(client_as, w.a, w.r1, w.wa).json()["affiliation_status"] == "linked"
 
     def test_a_refused_weighing_leaves_nothing_behind(self, client_as, db, w):
         from app.domains.weighings.models import Weighing
 
-        _weigh(client_as, w.a, w.r2, w.wa)
-        _weigh(client_as, w.a, w.r1, w.wb)
+        _weigh(client_as, w.a, w.r1, w.wb)  # another ECA's warehouse
         assert db.scalars(select(Weighing)).all() == []
 
-    def test_an_unlinked_recycler_is_also_not_reachable_by_that_eca_in_the_user_directory(self, client_as, w):
+    def test_an_unlinked_recycler_is_not_browsable_in_the_user_directory_but_can_be_looked_up(self, client_as, w):
         assert client_as(w.a.admin).get(f"/users/{w.r2.id}").status_code == 404
         assert client_as(w.a.admin).get(f"/users/{w.r1.id}").status_code == 200
+        found = client_as(w.a.admin).get("/recyclers/lookup", params={"document": w.r2.id_number})
+        assert found.status_code == 200 and found.json()["affiliation"] == "unlinked_association"
 
 
 class TestReadingWeighings:

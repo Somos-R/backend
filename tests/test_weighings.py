@@ -184,57 +184,59 @@ class TestStatusTransitions:
         assert r.status_code == 404
 
 
-class TestVerifiedRecyclerRule:
-    """A weighing needs a verified, active recycler (product rule: 'reciclador verificado')."""
+class TestTheEcaReceivesWhoeverBringsIt:
+    """An ECA receives material whatever the seller's affiliation or verification (non-discrimination).
 
-    MESSAGE = "no está verificado"
+    This replaces the earlier rule that a weighing needed a verified recycler. Only an account that Somos R
+    itself has deactivated is refused. What changes with the seller is where the weighing goes afterwards
+    (see test_eca_receives_any_seller.py).
+    """
 
     @pytest.mark.parametrize("state", [VerificationStatus.pending, VerificationStatus.rejected])
-    def test_an_unverified_recycler_cannot_be_weighed(self, client_as, eca_admin, warehouse, db, state):
+    def test_an_unverified_recycler_can_be_weighed(self, client_as, eca_admin, warehouse, db, state):
         recycler = factories.make_user(db, "recycler", verification_status=state)
         r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
-        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
+        assert r.status_code == 201, r.text
+        assert r.json()["affiliation_status"] == "unlinked_association"  # not verified: not through the link
 
-    def test_a_deactivated_recycler_cannot_be_weighed(self, client_as, eca_admin, warehouse, db):
+    def test_a_deactivated_account_is_still_refused(self, client_as, eca_admin, warehouse, db):
         recycler = factories.make_user(db, "recycler", is_active=False)
         r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
-        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
+        assert r.status_code == 400 and r.json()["code"] == "recycler_inactive"
 
     def test_a_refused_weighing_leaves_no_row_and_no_audit_entry(self, client_as, eca_admin, warehouse, db):
-        recycler = factories.make_user(db, "recycler", verification_status=VerificationStatus.pending)
+        recycler = factories.make_user(db, "recycler", is_active=False)
         client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
         assert db.query(Weighing).count() == 0
         assert db.query(AuditLog).filter(AuditLog.action == "weighing.created").count() == 0
 
     def test_a_verified_recycler_still_works(self, client_as, eca_admin, recycler, warehouse):
-        assert client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse)).status_code == 201
+        r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse))
+        assert r.status_code == 201 and r.json()["affiliation_status"] == "linked"
 
     def test_a_user_who_is_not_a_recycler_is_still_a_404(self, client_as, eca_admin, citizen, warehouse):
         assert client_as(eca_admin).post("/weighings", json=_payload(citizen, warehouse)).status_code == 404
 
-    def test_losing_verification_before_validation_blocks_the_validation(
-        self, client_as, eca_admin, recycler, warehouse, db
-    ):
+    def test_losing_verification_before_validation_does_not_block_it(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         weighing = _create(c, recycler, warehouse)
         recycler.verification_status = VerificationStatus.rejected
         db.commit()
-
         r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validated"})
-        assert r.status_code == 400 and self.MESSAGE in r.json()["detail"]
-        # nothing moved: still pending, no stock, no purchase owed to the recycler
-        db.expire_all()
-        assert db.get(Weighing, weighing["id"]).status.value == "pending_validation"
-        assert db.query(InventoryItem).count() == 0
-        assert c.get("/transactions?type=purchase").json()["total"] == 0
+        assert r.status_code == 200
 
-    def test_a_deactivated_recycler_blocks_the_validation_too(self, client_as, eca_admin, recycler, warehouse, db):
+    def test_deactivating_the_account_before_validation_blocks_it(self, client_as, eca_admin, recycler, warehouse, db):
         c = client_as(eca_admin)
         weighing = _create(c, recycler, warehouse)
         recycler.is_active = False
         db.commit()
         r = c.patch(f"/weighings/{weighing['id']}/status", json={"status": "validated"})
-        assert r.status_code == 400
+        assert r.status_code == 400 and r.json()["code"] == "recycler_inactive"
+        # nothing moved: still pending, no stock, no purchase owed
+        db.expire_all()
+        assert db.get(Weighing, weighing["id"]).status.value == "pending_validation"
+        assert db.query(InventoryItem).count() == 0
+        assert c.get("/transactions?type=purchase").json()["total"] == 0
 
     def test_a_weighing_can_still_be_rejected_after_the_recycler_lost_verification(
         self, client_as, eca_admin, recycler, warehouse, db
@@ -244,5 +246,5 @@ class TestVerifiedRecyclerRule:
         recycler.verification_status = VerificationStatus.rejected
         db.commit()
         r = c.patch(f"/weighings/{weighing['id']}/status",
-                    json={"status": "rejected", "rejection_reason": "Reciclador sin verificar"})
+                    json={"status": "rejected", "rejection_reason": "Material contaminado"})
         assert r.status_code == 200 and r.json()["status"] == "rejected"

@@ -4,7 +4,9 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.passwords import Email
+from app.domains.organizations.schemas import OrganizationRef
 from app.domains.users.enums import VerificationStatus
+from app.domains.weighings.models import AffiliationStatus
 
 
 class UpdateUserRequest(BaseModel):
@@ -124,6 +126,20 @@ class UserDetailResponse(BaseModel):
 
     # eca / association staff: the organization they work for (read-only: it is not editable)
     organization_id: uuid.UUID | None
+
+
+class RecyclerLookupResponse(BaseModel):
+    """What an ECA needs to weigh someone: who they are and how they relate to that ECA. No contact data."""
+
+    id: uuid.UUID
+    full_name: str
+    id_type: str
+    id_number: str
+    is_active: bool
+    verification_status: VerificationStatus | None
+    association: OrganizationRef | None
+    # Relative to the ECA that asks: `linked` only for a verified recycler of an association linked to it.
+    affiliation: AffiliationStatus
 
 
 class InviteStaffRequest(BaseModel):
