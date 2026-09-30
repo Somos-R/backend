@@ -14,10 +14,18 @@ from tests import factories
 MISSING = "00000000-0000-0000-0000-000000000000"
 
 
+def assoc_x_org_id(db):
+    """The organization id the world's first association will have: built here, reused by the fixture."""
+    return db.info.setdefault("assoc_x_org", factories.make_organization(
+        db, "association", legal_name="Asociación Xenón").id)
+
+
 @pytest.fixture
 def world(db):
-    def org_staff(org_type, tag):
-        org = factories.make_organization(db, org_type)
+    def org_staff(org_type, tag, existing=None):
+        from app.domains.organizations.models import Organization
+
+        org = db.get(Organization, existing) if existing else factories.make_organization(db, org_type)
         prefix = org_type
         admin = factories.make_user(
             db, org_type, role_code=f"{prefix}_admin", organization_id=org.id, full_name=f"Admin {tag}")
@@ -28,8 +36,9 @@ def world(db):
 
     return SimpleNamespace(
         eca_a=org_staff("eca", "Alfa"), eca_b=org_staff("eca", "Beta"),
-        assoc_x=org_staff("association", "Xenón"), assoc_y=org_staff("association", "Yodo"),
-        recycler=factories.make_user(db, "recycler", full_name="Reciclador Común"),
+        assoc_x=org_staff("association", "Xenón", existing=assoc_x_org_id(db)), assoc_y=org_staff("association", "Yodo"),
+        recycler=factories.make_user(
+            db, "recycler", full_name="Reciclador Común", organization_id=assoc_x_org_id(db)),
         citizen=factories.make_user(db, "citizen", full_name="Ciudadana Común"),
     )
 
@@ -58,7 +67,7 @@ class TestListing:
         assert _staff_ids(world.assoc_x) <= got
         assert not got & _staff_ids(world.assoc_y, world.eca_a, world.eca_b)
 
-    def test_the_association_still_sees_the_non_staff_people_it_saw_before(self, client_as, world):
+    def test_the_association_still_sees_its_recyclers_and_the_other_people_it_saw_before(self, client_as, world):
         got = _ids(client_as(world.assoc_x.admin).get("/users", params={"limit": 500}))
         assert {str(world.recycler.id), str(world.citizen.id)} <= got
 
@@ -99,9 +108,13 @@ class TestReadingOne:
     def test_an_association_admin_asking_for_eca_staff_is_refused_by_type(self, client_as, world):
         assert client_as(world.assoc_x.admin).get(f"/users/{world.eca_a.admin.id}").status_code in (403, 404)
 
-    def test_recyclers_are_still_readable_by_any_staff(self, client_as, world):
-        for staff in (world.eca_a.operator, world.assoc_x.operator, world.assoc_y.admin):
+    def test_a_recycler_is_readable_by_its_association_and_by_eca_staff_but_not_by_another_association(
+        self, client_as, world
+    ):
+        for staff in (world.eca_a.operator, world.assoc_x.operator, world.assoc_x.admin):
             assert client_as(staff).get(f"/users/{world.recycler.id}").status_code == 200
+        r = client_as(world.assoc_y.admin).get(f"/users/{world.recycler.id}")
+        assert r.status_code == 404 and r.json()["code"] == "user_not_found"
 
     def test_somos_r_accounts_are_invisible_to_customers(self, client_as, world, db):
         platform = factories.make_user(db, "platform", role_code="platform_admin")
@@ -178,9 +191,9 @@ class TestAccountsWithoutAnOrganization:
         r = client_as(orphans.admin).patch(f"/users/{world.eca_a.operator.id}", json={"phone": "3444444444"})
         assert r.status_code == 404
 
-    def test_they_can_still_register_recyclers_and_edit_themselves(self, client_as, orphans):
+    def test_they_can_still_register_recyclers_and_edit_themselves(self, client_as, world, orphans):
         payload = {"user_type_code": "recycler", "email": "r@test.com", "full_name": "Reci", "id_type": "CC",
-                   "id_number": "8880002"}
+                   "id_number": "8880002", "association_id": str(world.assoc_x.org.id)}
         assert client_as(orphans.admin).post("/auth/register", json=payload).status_code == 201
         assert client_as(orphans.admin).patch(
             f"/users/{orphans.admin.id}", json={"phone": "3555555555"}).status_code == 200

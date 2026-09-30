@@ -315,10 +315,19 @@ class TestAssigningAnOrganization:
                    json={"organization_id": "00000000-0000-0000-0000-000000000000"})
         assert r.status_code == 404 and r.json()["code"] == "organization_not_found"
 
-    @pytest.mark.parametrize("kind", ["recycler", "citizen"])
-    def test_only_staff_belong_to_organizations(self, bo, world, kind):
-        r = bo.put(f"/admin/users/{getattr(world, kind).id}/organization", json={"organization_id": str(world.eca.id)})
+    def test_citizens_do_not_belong_to_organizations(self, bo, world):
+        r = bo.put(f"/admin/users/{world.citizen.id}/organization", json={"organization_id": str(world.eca.id)})
         assert r.status_code == 409 and r.json()["code"] == "organization_not_applicable"
+
+    def test_a_recycler_without_an_association_is_given_one(self, bo, db, world):
+        loose = factories.make_user(db, "recycler", organization_id=None)
+        r = bo.put(f"/admin/users/{loose.id}/organization", json={"organization_id": str(world.assoc.id)})
+        assert r.status_code == 200 and r.json()["organization_id"] == str(world.assoc.id)
+
+    def test_a_recycler_only_joins_an_association_never_an_eca(self, bo, db, world):
+        loose = factories.make_user(db, "recycler", organization_id=None)
+        r = bo.put(f"/admin/users/{loose.id}/organization", json={"organization_id": str(world.eca.id)})
+        assert r.status_code == 422 and r.json()["code"] == "organization_type_mismatch"
 
 
 class TestWhoMayUseIt:

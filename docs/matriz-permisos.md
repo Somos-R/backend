@@ -65,11 +65,12 @@ Los permisos de arriba dicen *qué* puede hacer cada rol; el alcance dice *sobre
 
 - **`GET /users`, `GET /users/{id}`, `PATCH /users/{id}`, asignación de roles:** un administrador ve y edita únicamente al personal de **su** organización. El personal de otra organización responde como un usuario inexistente (**404 `user_not_found`**, idéntico a un id que no existe) y en los listados y en la búsqueda `q` no aparece. Una asociación tampoco ve al personal de ninguna ECA.
 - **`GET /audit-log`:** el administrador de asociación lee solo lo que hizo el personal de su organización y lo intentado contra sus cuentas (un login fallido no tiene actor, pero sí la cuenta a la que apuntó).
+- **Recicladores:** un reciclador pertenece a **una asociación** (`organization_id`; la elige al registrarse en el directorio público `GET /catalogs/associations`, o hereda la del personal de asociación que lo registra). El personal de una asociación ve, edita y **verifica** solo a los suyos; los de otra asociación responden 404. Un reciclador sin asociación no lo alcanza ninguna; se le asigna una desde el backoffice (`PUT /admin/users/{id}/organization`). El propio reciclador no cambia.
 - **Sin organización, sin alcance (falla cerrado):** una cuenta de personal sin organización no alcanza a nadie del personal (ni siquiera a otras cuentas sin organización), no puede crear personal (403 `no_organization`) y no lee la auditoría. Nadie más puede ver a esas cuentas.
 - **Lo que hace cada persona sobre sí misma no cambia.**
 
 **Todavía NO aislado** (pendiente, tarea 6.17):
-- **Recicladores** (y ciudadanos, conjuntos, empresas B2B): no pertenecen a una organización, así que todo el personal con permiso los sigue alcanzando. Cambiará cuando el reciclador elija su asociación (6.16).
+- **Recicladores para el personal de ECA:** el personal de ECA sigue alcanzando a todos los recicladores (los pesa); atarlo a los vínculos con las asociaciones es parte de la tarea 6.17. Ciudadanos, conjuntos y empresas B2B tampoco pertenecen a una organización.
 - **Datos operativos** (bodegas, pesajes, inventario, transacciones): no tienen dueño; hoy todo el personal con el rol adecuado los ve, de cualquier organización. Con una sola ECA y una sola asociación no hay fuga; antes de operar con varias hay que darles dueño y hacer que la Asociación los lea por sus vínculos con las ECA (6.12).
 
 Notas de comportamiento:
