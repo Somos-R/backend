@@ -53,6 +53,7 @@ class Action:
     WEIGHING_VALIDATED = "weighing.validated"
     WEIGHING_REJECTED = "weighing.rejected"
     WEIGHING_PAID = "weighing.paid"
+    WEIGHINGS_EXPORTED = "weighing.exported"
 
     # --- Transactions ---
     TRANSACTION_CREATED = "transaction.created"
