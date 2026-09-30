@@ -64,11 +64,17 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
 
 def default_organization(db: Session, org_type: str):
     """The organization staff created by the factory share unless told otherwise (one per type per test)."""
-    from app.domains.organizations.models import Organization
+    from app.domains.organizations.enums import LinkStatus
+    from app.domains.organizations.models import EcaAssociationLink, Organization
 
     cache = db.info.setdefault("default_organizations", {})  # ids only: tests may detach instances
     if org_type not in cache:
         cache[org_type] = make_organization(db, org_type, legal_name=f"Organización por defecto ({org_type})").id
+        # The two default organizations are linked, so that the default recycler can deliver to the default ECA.
+        if {"eca", "association"} <= set(cache):
+            db.add(EcaAssociationLink(eca_id=cache["eca"], association_id=cache["association"],
+                                      status=LinkStatus.active))
+            db.commit()
     return db.get(Organization, cache[org_type])
 
 
@@ -108,7 +114,19 @@ def auth_headers(user: User) -> dict[str, str]:
 
 
 def first_warehouse(db: Session) -> Warehouse:
-    return db.query(Warehouse).order_by(Warehouse.name).first()  # type: ignore[return-value]
+    """A seeded warehouse, owned by the default ECA (the one the default ECA staff belong to)."""
+    warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+    warehouse.organization_id = default_organization(db, "eca").id  # type: ignore[union-attr]
+    db.commit()
+    return warehouse  # type: ignore[return-value]
+
+
+def own_all_warehouses(db: Session) -> None:
+    """Every seeded warehouse belongs to the default ECA (for tests that spread data over several)."""
+    owner = default_organization(db, "eca").id
+    for warehouse in db.query(Warehouse).all():
+        warehouse.organization_id = owner
+    db.commit()
 
 
 def stock(

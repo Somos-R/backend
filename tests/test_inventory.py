@@ -6,7 +6,8 @@ from tests import factories
 MISSING_ID = "00000000-0000-0000-0000-000000000000"
 
 
-def test_materials_and_warehouses_are_seeded(client_as, eca_admin):
+def test_materials_and_warehouses_are_seeded(client_as, eca_admin, db):
+    factories.own_all_warehouses(db)
     c = client_as(eca_admin)
     materials = c.get("/inventory/materials")
     warehouses = c.get("/inventory/warehouses")

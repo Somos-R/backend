@@ -57,6 +57,7 @@ Reglas generales:
 | `GET /audit-log` | ✅ | — | — | — | — | — | — | — |
 | `GET /directory/associations`, `POST /links` (solicitar) | — | — | — | ✅ | — | — | — | — |
 | `GET /links` (los de su organización), `POST /links/{id}/remove` | ✅ | — | — | ✅ | — | — | — | — |
+| `POST /inventory/warehouses` (bodega propia) | — | — | — | ✅ | — | — | — | — |
 | `POST /links/{id}/accept`, `/reject` | ✅ | — | — | — | — | — | — | — |
 
 ## Alcance por organización
@@ -69,9 +70,18 @@ Los permisos de arriba dicen *qué* puede hacer cada rol; el alcance dice *sobre
 - **Sin organización, sin alcance (falla cerrado):** una cuenta de personal sin organización no alcanza a nadie del personal (ni siquiera a otras cuentas sin organización), no puede crear personal (403 `no_organization`) y no lee la auditoría. Nadie más puede ver a esas cuentas.
 - **Lo que hace cada persona sobre sí misma no cambia.**
 
-**Todavía NO aislado** (pendiente, tarea 6.17):
-- **Recicladores para el personal de ECA:** el personal de ECA sigue alcanzando a todos los recicladores (los pesa); atarlo a los vínculos con las asociaciones es parte de la tarea 6.17. Ciudadanos, conjuntos y empresas B2B tampoco pertenecen a una organización.
-- **Datos operativos** (bodegas, pesajes, inventario, transacciones): no tienen dueño; hoy todo el personal con el rol adecuado los ve, de cualquier organización. Con una sola ECA y una sola asociación no hay fuga; antes de operar con varias hay que darles dueño y hacer que la Asociación los lea por sus vínculos con las ECA (6.12).
+**Datos operativos (bodegas, inventario, pesajes, transacciones).** Pertenecen a la **ECA dueña de la bodega** donde ocurren (`warehouses.organization_id`). Las reglas están en un solo lugar (`app/domains/organizations/scope.py`) y filtran listados, totales, estadísticas y consulta individual; lo que queda fuera de alcance responde **404**, idéntico a un id inexistente:
+
+| Quién | Qué alcanza |
+|---|---|
+| Personal de una **ECA** | Lo de **sus** bodegas: inventario (lee y edita según su rol), pesajes y transacciones. Solo puede **pesar en sus bodegas** y **solo a recicladores de asociaciones vinculadas a su ECA** (`409 recycler_not_linked` si no; el vínculo debe estar `active` en ese momento). Una venta solo sale de una bodega propia. |
+| Personal de una **asociación** | **Lee** los pesajes y las **compras** de **sus** recicladores (de cualquier ECA; el historial no se pierde si el vínculo termina) y las bodegas e inventario de las **ECA con vínculo activo**, sin escribir. No ve las ventas de la ECA. Puede validar y pagar lo de sus recicladores, según su rol. |
+| Reciclador | Sus propios pesajes, como antes. |
+| Sin organización | Nada (falla cerrado). |
+
+- Una **bodega sin dueña** no la ve ningún cliente: se le asigna una ECA desde el backoffice (`PUT /admin/warehouses/{id}/organization`, capacidad `catalogs.manage`, una sola vez y solo a una ECA aprobada). Una ECA crea las suyas con `POST /inventory/warehouses` (solo `eca_admin`).
+- Los recicladores también son alcanzables por el personal de ECA **solo si su asociación está vinculada** a esa ECA.
+- **Decisión de negocio a confirmar con Sebas:** que la ECA solo pese a recicladores de asociaciones vinculadas, y que la asociación lea únicamente lo de sus recicladores y el inventario de sus ECA vinculadas. Cambiarlo es tocar `scope.py` y sus pruebas.
 
 Notas de comportamiento:
 
@@ -106,7 +116,7 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 
 Relación de varios a varios **entre organizaciones**: una ECA puede vincularse a varias asociaciones y una asociación recibir a varias ECA. **La ECA siempre inicia** (`POST /links` con el id de una asociación aprobada, que sale del directorio) y **el administrador de la asociación decide** (`accept` / `reject`, con motivo opcional). Cualquiera de las dos partes puede retirar un vínculo activo; la ECA también puede cancelar su solicitud sin respuesta. Estados: `requested` → `active` / `rejected` → (`removed`); tras un rechazo o un retiro la ECA puede volver a solicitar (se reabre la misma fila; el historial está en la auditoría: `link.requested`, `link.accepted`, `link.rejected`, `link.removed`).
 
-Solo concierne a sus dos organizaciones: cualquier otra recibe **404 `link_not_found`**. Del otro lado solo se ve el nombre y la ciudad. Exige organización aprobada (403 `organization_not_active`). **Hoy el vínculo no cambia lo que cada quien ve de los datos operativos**: eso llega con la tarea 6.17.
+Solo concierne a sus dos organizaciones: cualquier otra recibe **404 `link_not_found`**. Del otro lado solo se ve el nombre y la ciudad. Exige organización aprobada (403 `organization_not_active`). El vínculo **activo** es lo que permite a una ECA pesar a los recicladores de la asociación y a la asociación leer el inventario de la ECA (ver «Alcance por organización»).
 
 ## Capacidades (`GET /auth/me`)
 

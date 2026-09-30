@@ -63,6 +63,7 @@ def _add_sales(db, warehouse, admin, count, **extra):
 # loading each distinct one costs a query, so an N+1 shows up as a growing count.
 
 def _varied_weighings(db, count):
+    factories.own_all_warehouses(db)
     warehouses = db.query(Warehouse).order_by(Warehouse.name).all()
     rows = [
         Weighing(
@@ -77,6 +78,7 @@ def _varied_weighings(db, count):
 
 
 def _varied_sales(db, admin_id, count):
+    factories.own_all_warehouses(db)
     warehouses = db.query(Warehouse).order_by(Warehouse.name).all()
     rows = [
         Transaction(
@@ -127,6 +129,7 @@ class TestNoNPlusOne:
 
     def test_inventory_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
+        factories.own_all_warehouses(db)
         factories.stock(db, db.query(Warehouse).order_by(Warehouse.name).first(), "paper")
         few, _ = _queries_for(c, "/inventory", db, count_queries)
 

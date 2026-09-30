@@ -42,7 +42,9 @@ def real(engine):
     with Session(engine) as session:
         warehouse = session.query(Warehouse).order_by(Warehouse.name).first()
         admin = factories.make_actor(session, "eca_admin")
-        recycler = factories.make_user(session, "recycler")
+        recycler = factories.make_user(session, "recycler")  # of the default association, linked to the default ECA
+        warehouse.organization_id = factories.default_organization(session, "eca").id
+        session.commit()
         world = {
             "engine": engine,
             "warehouse_id": warehouse.id,
@@ -52,7 +54,9 @@ def real(engine):
         }
     yield world
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users, inventory_items, audit_log CASCADE"))
+        connection.execute(text("UPDATE warehouses SET organization_id = NULL"))
+        connection.execute(text("TRUNCATE users, inventory_items, audit_log, eca_association_links CASCADE"))
+        connection.execute(text("DELETE FROM organizations"))
 
 
 def _api(headers):
