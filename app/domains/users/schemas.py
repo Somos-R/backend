@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.passwords import Email
 from app.domains.users.enums import VerificationStatus
 
 
@@ -121,6 +122,30 @@ class UserDetailResponse(BaseModel):
 
     # eca / association staff: the organization they work for (read-only: it is not editable)
     organization_id: uuid.UUID | None
+
+
+class InviteStaffRequest(BaseModel):
+    """Invite a person to the organization of whoever sends this. They choose their own password."""
+
+    email: Email
+    full_name: str = Field(min_length=2, max_length=255)
+    id_type: str = Field(min_length=1, max_length=10)
+    id_number: str = Field(min_length=3, max_length=20)
+    phone: str | None = Field(default=None, max_length=20)
+    role_code: str = Field(min_length=1, max_length=20)
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{
+                "email": "carlos.mendoza@eca-norte.co",
+                "full_name": "Carlos Mendoza Ruiz",
+                "id_type": "CC",
+                "id_number": "1020304050",
+                "phone": "3156789012",
+                "role_code": "eca_operator",
+            }]
+        }
+    )
 
 
 class UpdateRecyclerStatusRequest(BaseModel):

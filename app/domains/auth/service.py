@@ -124,6 +124,18 @@ def send_activation_email(to: str, full_name: str, token: str) -> None:
     )
 
 
+def send_staff_invitation_email(to: str, full_name: str, organization_name: str, token: str) -> None:
+    send_email(
+        to,
+        f"Te invitaron a {organization_name} en Somos R",
+        f"Hola {full_name},\n\n"
+        f"{organization_name} te invitó a Somos R. Crea tu contraseña para entrar:\n"
+        f"{_link('activate', token)}\n\n"
+        f"El enlace es de un solo uso y vence en {settings.activation_token_minutes // 60} horas. "
+        "Si no esperabas esta invitación, ignora este mensaje.",
+    )
+
+
 def send_verification_email(to: str, full_name: str, token: str) -> None:
     send_email(
         to,
@@ -411,9 +423,14 @@ def refresh_session(db: Session, raw_refresh_token: str) -> dict:
     return build_token_response(user, refresh_token, family_id)
 
 
+# Accounts that are created without a password and choose theirs through an emailed link: recyclers
+# (once verified) and staff invited by their organization. Never Somos R's own accounts.
+ACTIVATABLE_TYPES = frozenset({"recycler", "eca", "association"})
+
+
 def activate_account(db: Session, token: str, password: str) -> None:
     user = consume_token(db, token, ACTIVATE)
-    if user.user_type_code != "recycler" or user.password_hash:
+    if user.user_type_code not in ACTIVATABLE_TYPES or user.password_hash:
         raise ApiError("invalid_link", status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_LINK)
 
     user.password_hash = hash_password(password)
