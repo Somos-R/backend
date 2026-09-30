@@ -97,7 +97,7 @@ Cada pesaje guarda cómo se relaciona el vendedor con **esa** ECA en el momento 
 | `unlinked_association` | Reciclador con asociación, pero no vinculada a esa ECA (o aún no verificado) |
 | `independent` | Reciclador sin asociación, o persona no registrada |
 
-**Solo los `linked` llegan a una asociación** (pesajes, compras, estadísticas y la posibilidad de validarlos o pagarlos). Los demás cuentan para el inventario, las compras y los reportes de la ECA, pero ninguna asociación los ve. `GET /weighings?affiliation=` filtra por este valor. `GET /recyclers/lookup?document=` identifica a un reciclador registrado y devuelve su `affiliation` respecto a la ECA que pregunta.
+**Solo los `linked` llegan a una asociación** (pesajes, compras, estadísticas y la posibilidad de validarlos o pagarlos). Los demás cuentan para el inventario, las compras y los reportes de la ECA, pero ninguna asociación los ve. `GET /weighings?affiliation=` filtra por este valor y `GET /weighings?q=` busca (sin distinguir mayúsculas ni tildes, mínimo 2 caracteres) por el nombre y el documento del reciclador registrado y por el nombre y el documento de quien no lo está; siempre dentro del alcance de quien pregunta. `GET /recyclers/lookup?document=` identifica a un reciclador registrado y devuelve su `affiliation` respecto a la ECA que pregunta.
 
 Esto sustituye a la regla anterior («solo reciclador verificado y de asociación vinculada»). **Pregunta abierta de negocio:** si el pesaje de un vendedor fuera del vínculo cuenta para el reporte SUI de la ECA, de la asociación de origen o de ambas.
 

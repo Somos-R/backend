@@ -6,11 +6,12 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import and_, false, func, or_, select
+from sqlalchemy import and_, false, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
+from app.core import search
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.permissions import (
@@ -40,29 +41,12 @@ from app.domains.users.schemas import (
     UpdateUserRequest,
 )
 
-MIN_SEARCH_LENGTH = 2
 _SEARCH_COLUMNS = (User.full_name, User.id_number, User.email)
-
-
-def _search_term(q: str | None) -> str | None:
-    """`%text%` for a case- and accent-insensitive "contains", or None when q is too short to use.
-
-    `%`, `_` and backslash in the input are escaped: they are characters to find, never wildcards.
-    """
-    text = (q or "").strip()
-    if len(text) < MIN_SEARCH_LENGTH:
-        return None
-    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{escaped}%"
 
 
 def search_clause(q: str | None) -> ColumnElement[bool] | None:
     """SQL for the text search over name, document and email; None when `q` is empty or too short."""
-    term = _search_term(q)
-    if term is None:
-        return None
-    pattern = func.unaccent(term)
-    return or_(*(func.unaccent(column).ilike(pattern, escape="\\") for column in _SEARCH_COLUMNS))
+    return search.contains(q, _SEARCH_COLUMNS)
 
 
 def _in_scope_clause(actor: User) -> ColumnElement[bool]:

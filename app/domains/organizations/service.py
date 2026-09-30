@@ -8,9 +8,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core import search
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.domains.audit import service as audit
@@ -22,7 +23,6 @@ from app.domains.organizations.enums import (
 )
 from app.domains.organizations.models import EcaAssociationLink, Organization
 from app.domains.users.models import User
-from app.domains.users.service import MIN_SEARCH_LENGTH
 
 
 def _own_organization(db: Session, actor: User, expected: OrganizationType | None = None) -> Organization:
@@ -59,10 +59,9 @@ def directory(db: Session, actor: User, q: str | None, limit: int, offset: int) 
     eca = _own_organization(db, actor, OrganizationType.eca)
     query = select(Organization).where(
         Organization.type == OrganizationType.association, Organization.status == OrganizationStatus.approved)
-    text = (q or "").strip()
-    if len(text) >= MIN_SEARCH_LENGTH:
-        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.where(func.unaccent(Organization.legal_name).ilike(func.unaccent(f"%{escaped}%"), escape="\\"))
+    name_match = search.contains(q, [Organization.legal_name])
+    if name_match is not None:
+        query = query.where(name_match)
     total, orgs = paginate(db, query, Organization.legal_name, Organization.id, limit=limit, offset=offset)
     links = {
         link.association_id: link.status
