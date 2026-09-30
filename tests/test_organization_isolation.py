@@ -34,13 +34,20 @@ def world(db):
             db, org_type, role_code=operator_role, organization_id=org.id, full_name=f"Operador {tag}")
         return SimpleNamespace(org=org, admin=admin, operator=operator)
 
-    return SimpleNamespace(
+    world = SimpleNamespace(
         eca_a=org_staff("eca", "Alfa"), eca_b=org_staff("eca", "Beta"),
         assoc_x=org_staff("association", "Xenón", existing=assoc_x_org_id(db)), assoc_y=org_staff("association", "Yodo"),
         recycler=factories.make_user(
             db, "recycler", full_name="Reciclador Común", organization_id=assoc_x_org_id(db)),
         citizen=factories.make_user(db, "citizen", full_name="Ciudadana Común"),
     )
+    # ECA Alfa receives from Asociación Xenón: its recyclers are Alfa's to see and weigh.
+    from app.domains.organizations.enums import LinkStatus
+    from app.domains.organizations.models import EcaAssociationLink
+
+    db.add(EcaAssociationLink(eca_id=world.eca_a.org.id, association_id=world.assoc_x.org.id, status=LinkStatus.active))
+    db.commit()
+    return world
 
 
 def _ids(response):
@@ -173,7 +180,7 @@ class TestAccountsWithoutAnOrganization:
 
     def test_they_see_no_staff_at_all_not_even_each_other(self, client_as, world, orphans):
         got = _ids(client_as(orphans.admin).get("/users", params={"limit": 500}))
-        assert str(world.recycler.id) in got
+        assert str(world.recycler.id) not in got  # no organization: no linked association either
         assert not got & (_staff_ids(world.eca_a, world.eca_b, world.assoc_x) | {str(orphans.operator.id)})
 
     def test_nobody_else_sees_them(self, client_as, world, orphans):

@@ -18,7 +18,8 @@ from app.core.permissions import (
 from app.core.security import get_current_user, require_roles
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.inventory.models import Material, Warehouse
+from app.domains.inventory.models import Material
+from app.domains.organizations import scope
 from app.domains.transactions import service as tx_service
 from app.domains.transactions.models import (
     Transaction,
@@ -45,9 +46,9 @@ def list_transactions(
     limit:       int                     = Query(default=20, ge=1, le=100),
     offset:      int                     = Query(default=0, ge=0),
     db:          Session                 = Depends(get_db),
-    _:           User                    = Depends(require_roles(*TRANSACTIONS_READ)),
+    actor:       User                    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    query = select(Transaction)
+    query = select(Transaction).where(scope.transaction_scope(actor))
     if type:
         query = query.where(Transaction.type == type)
     if status_:
@@ -69,12 +70,13 @@ def list_transactions(
 @router.get("/stats", response_model=TransactionStatsResponse)
 def transaction_stats(
     db: Session = Depends(get_db),
-    _:  User    = Depends(require_roles(*TRANSACTIONS_READ)),
+    actor: User = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     this_month = Transaction.occurred_at >= start
+    mine = scope.transaction_scope(actor)
 
     per_type = {
         tx_type: (count, kg, value)
@@ -84,11 +86,11 @@ def transaction_stats(
                 func.count(Transaction.id),
                 func.coalesce(func.sum(Transaction.kg), 0),
                 func.coalesce(func.sum(Transaction.kg * Transaction.price_per_kg), 0),
-            ).where(this_month).group_by(Transaction.type)
+            ).where(this_month, mine).group_by(Transaction.type)
         ).all()
     }
     pending = db.scalar(
-        select(func.count(Transaction.id)).where(this_month, Transaction.status == TransactionStatus.pending)
+        select(func.count(Transaction.id)).where(this_month, mine, Transaction.status == TransactionStatus.pending)
     )
 
     empty = (0, Decimal("0"), Decimal("0"))
@@ -113,8 +115,7 @@ def create_sale(
 ):
     if not db.get(Material, request.material_code):
         raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
-    if not db.get(Warehouse, request.warehouse_id):
-        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+    scope.get_own_warehouse(db, current_user, request.warehouse_id)  # a sale is out of the ECA's own warehouse
 
     tx = tx_service.create_sale(
         db=db,
@@ -140,9 +141,10 @@ def create_sale(
 def get_transaction(
     transaction_id: uuid.UUID,
     db:             Session = Depends(get_db),
-    _:              User    = Depends(require_roles(*TRANSACTIONS_READ)),
+    actor:          User    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    tx = db.get(Transaction, transaction_id)
+    tx = db.scalars(select(Transaction).where(
+        Transaction.id == transaction_id, scope.transaction_scope(actor))).first()
     if not tx:
         raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
     return tx
@@ -159,7 +161,8 @@ def update_status(
     ensure_role(actor, PAYMENTS if request.status == TransactionStatus.paid else TRANSACTIONS_WRITE)
 
     # FOR UPDATE: two concurrent cancels must not both restore the stock.
-    tx = db.scalars(select(Transaction).where(Transaction.id == transaction_id).with_for_update()).first()
+    tx = db.scalars(select(Transaction).where(
+        Transaction.id == transaction_id, scope.transaction_scope(actor)).with_for_update()).first()
     if not tx:
         raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
 

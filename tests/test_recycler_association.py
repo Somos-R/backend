@@ -183,10 +183,20 @@ class TestOnlyItsAssociationReachesTheRecycler:
         got = {i["id"] for i in client_as(w.x.admin).get("/users", params={"limit": 500}).json()["items"]}
         assert str(loose.id) not in got
 
-    def test_eca_staff_still_reach_every_recycler_until_the_operational_work(self, client_as, db, w, recycler):
+    def test_eca_staff_reach_only_the_recyclers_of_the_associations_linked_to_their_eca(
+        self, client_as, db, w, recycler
+    ):
+        from app.domains.organizations.enums import LinkStatus
+        from app.domains.organizations.models import EcaAssociationLink
+
         other = factories.make_user(db, "recycler", organization_id=w.y.org.id)
-        got = {i["id"] for i in client_as(w.eca_admin).get("/users", params={"user_type_code": "recycler", "limit": 500}).json()["items"]}
-        assert {str(recycler.id), str(other.id)} <= got
+        db.add(EcaAssociationLink(eca_id=w.eca.id, association_id=w.x.org.id, status=LinkStatus.active))
+        db.commit()
+        c = client_as(w.eca_admin)
+        got = {i["id"] for i in c.get("/users", params={"user_type_code": "recycler", "limit": 500}).json()["items"]}
+        assert str(recycler.id) in got and str(other.id) not in got
+        assert c.get(f"/users/{recycler.id}").status_code == 200
+        assert c.get(f"/users/{other.id}").status_code == 404
 
     def test_recyclers_reach_themselves(self, client_as, recycler):
         assert client_as(recycler).get(f"/users/{recycler.id}").status_code == 200

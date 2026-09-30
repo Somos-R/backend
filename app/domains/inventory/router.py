@@ -7,12 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.database import get_db
 from app.core.errors import ApiError
 from app.core.pagination import paginate
-from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE
+from app.core.permissions import ECA_ADMIN, INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory.models import InventoryItem, Material, Warehouse
 from app.domains.inventory.schemas import (
+    CreateWarehouseRequest,
     InventoryItemResponse,
     InventoryListResponse,
     InventoryStatsResponse,
@@ -20,6 +21,9 @@ from app.domains.inventory.schemas import (
     UpdateInventoryItemRequest,
     WarehouseResponse,
 )
+from app.domains.organizations import scope
+from app.domains.organizations.enums import OrganizationStatus
+from app.domains.organizations.models import Organization
 from app.domains.users.models import User
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
@@ -33,9 +37,9 @@ def list_inventory(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*INVENTORY_READ)),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    query = select(InventoryItem)
+    query = select(InventoryItem).where(scope.inventory_scope(actor, InventoryItem.warehouse_id))
 
     if material_code:
         query = query.where(InventoryItem.material_code == material_code)
@@ -58,16 +62,17 @@ def list_inventory(
 @router.get("/stats", response_model=InventoryStatsResponse)
 def inventory_stats(
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*INVENTORY_READ)),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
+    visible = scope.inventory_scope(actor, InventoryItem.warehouse_id)
     total_stock, total_value = db.execute(select(
         func.coalesce(func.sum(InventoryItem.stock_kg), 0),
         func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.price_per_kg), 0),
-    )).one()
+    ).where(visible)).one()
     by_status: dict[str, int] = {
         status: count
         for status, count in db.execute(
-            select(InventoryItem.status, func.count(InventoryItem.id)).group_by(InventoryItem.status)
+            select(InventoryItem.status, func.count(InventoryItem.id)).where(visible).group_by(InventoryItem.status)
         ).all()
     }
     return InventoryStatsResponse(
@@ -82,9 +87,34 @@ def inventory_stats(
 @router.get("/warehouses", response_model=list[WarehouseResponse])
 def list_warehouses(
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*INVENTORY_READ)),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    return db.scalars(select(Warehouse).where(Warehouse.is_active.is_(True)).order_by(Warehouse.name)).all()
+    return db.scalars(select(Warehouse).where(
+        Warehouse.is_active.is_(True), scope.warehouse_scope(actor)).order_by(Warehouse.name, Warehouse.id)).all()
+
+
+@router.post("/warehouses", response_model=WarehouseResponse, status_code=status.HTTP_201_CREATED)
+def create_warehouse(
+    body: CreateWarehouseRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(ECA_ADMIN)),
+):
+    """A warehouse of the actor's own ECA. Everything that happens in it (inventory, weighings, sales)
+    belongs to that ECA."""
+    organization = db.get(Organization, actor.organization_id) if actor.organization_id else None
+    if organization is None:
+        raise ApiError("no_organization", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu cuenta no está asociada a una organización")
+    if organization.status != OrganizationStatus.approved:
+        raise ApiError("organization_not_active", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Tu organización no está activa")
+    warehouse = Warehouse(name=body.name.strip(), address=body.address, organization_id=organization.id)
+    db.add(warehouse)
+    db.flush()
+    audit.record(db, Action.WAREHOUSE_CREATED, actor=actor, target_type="warehouse", target_id=warehouse.id)
+    db.commit()
+    db.refresh(warehouse)
+    return warehouse
 
 
 @router.get("/materials", response_model=list[MaterialResponse])
@@ -99,9 +129,10 @@ def list_materials(
 def get_inventory_item(
     item_id: uuid.UUID,
     db: Session = Depends(get_db),
-    _: User = Depends(require_roles(*INVENTORY_READ)),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    item = db.get(InventoryItem, item_id)
+    item = db.scalars(select(InventoryItem).where(
+        InventoryItem.id == item_id, scope.inventory_scope(actor, InventoryItem.warehouse_id))).first()
     if not item:
         raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
     return item
@@ -114,7 +145,8 @@ def update_inventory_item(
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*INVENTORY_WRITE)),
 ):
-    item = db.get(InventoryItem, item_id)
+    item = db.scalars(select(InventoryItem).where(
+        InventoryItem.id == item_id, scope.inventory_write_scope(actor, InventoryItem.warehouse_id))).first()
     if not item:
         raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
 

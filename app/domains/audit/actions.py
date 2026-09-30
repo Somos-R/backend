@@ -62,6 +62,8 @@ class Action:
 
     # --- Inventory ---
     INVENTORY_UPDATED = "inventory.updated"
+    WAREHOUSE_CREATED = "warehouse.created"
+    WAREHOUSE_ORGANIZATION_ASSIGNED = "warehouse.organization_assigned"
 
 
 SUCCESS = "success"

@@ -20,7 +20,8 @@ from app.core.permissions import (
 from app.core.security import get_current_user, require_roles
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.inventory.models import Material, Warehouse
+from app.domains.inventory.models import Material
+from app.domains.organizations import scope
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
 from app.domains.weighings.models import Weighing, WeighingStatus
@@ -58,6 +59,8 @@ def list_weighings(
         recycler_id = actor.id
 
     query = select(Weighing)
+    if actor.user_type_code != "recycler":
+        query = query.where(scope.weighing_scope(actor))
 
     if recycler_id:
         query = query.where(Weighing.recycler_id == recycler_id)
@@ -82,22 +85,23 @@ def list_weighings(
 @router.get("/stats", response_model=WeighingStatsResponse)
 def weighing_stats(
     db: Session = Depends(get_db),
-    _:  User    = Depends(require_roles(*WEIGHINGS_READ)),
+    actor: User = Depends(require_roles(*WEIGHINGS_READ)),
 ):
     now   = datetime.now(timezone.utc)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     this_month = Weighing.occurred_at >= start
+    mine = scope.weighing_scope(actor)
 
     count_month, total_kg = db.execute(
-        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(this_month)
+        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(this_month, mine)
     ).one()
     pending = db.scalar(
-        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation)
+        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation, mine)
     )
     by_material = db.execute(
         select(Weighing.material_code, func.sum(Weighing.kg))
-        .where(this_month)
+        .where(this_month, mine)
         .group_by(Weighing.material_code)
         .order_by(Weighing.material_code)
     ).all()
@@ -124,8 +128,9 @@ def create_weighing(
     if not db.get(Material, request.material_code):
         raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
 
-    if not db.get(Warehouse, request.warehouse_id):
-        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+    # Only in a warehouse of the actor's own ECA, and only a recycler of an association linked to it.
+    warehouse = scope.get_own_warehouse(db, actor, request.warehouse_id)
+    scope.ensure_recycler_delivers_to(db, warehouse.organization_id, recycler)
 
     weighing = Weighing(
         id=uuid.uuid4(),
@@ -152,8 +157,14 @@ def get_weighing(
     actor:       User    = Depends(get_weighing_reader),
 ):
     weighing = db.get(Weighing, weighing_id)
-    # A recycler asking for someone else's weighing gets the same answer as for a missing one.
-    if not weighing or (actor.user_type_code == "recycler" and weighing.recycler_id != actor.id):
+    # Someone else's weighing gets the same answer as a missing one: a recycler's peers, another
+    # ECA, another association.
+    outside = (
+        weighing is not None
+        and (weighing.recycler_id != actor.id if actor.user_type_code == "recycler"
+             else db.scalar(select(Weighing.id).where(Weighing.id == weighing_id, scope.weighing_scope(actor))) is None)
+    )
+    if not weighing or outside:
         raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
     return weighing
 
@@ -169,7 +180,9 @@ def update_weighing_status(
     ensure_role(current_user, PAYMENTS if request.status == WeighingStatus.paid else WEIGHINGS_REVIEW)
 
     # FOR UPDATE: a concurrent transition on the same weighing waits here and then sees the new state.
-    weighing = db.scalars(select(Weighing).where(Weighing.id == weighing_id).with_for_update()).first()
+    weighing = db.scalars(
+        select(Weighing).where(Weighing.id == weighing_id, scope.weighing_scope(current_user)).with_for_update()
+    ).first()
     if not weighing:
         raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
 

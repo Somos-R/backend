@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import status
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
@@ -29,6 +29,7 @@ from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.auth import service as auth_service
 from app.domains.catalogs.models import DocumentType, Role
+from app.domains.organizations import scope
 from app.domains.organizations.enums import OrganizationStatus
 from app.domains.organizations.models import Organization
 from app.domains.users.enums import VerificationStatus
@@ -65,14 +66,36 @@ def search_clause(q: str | None) -> ColumnElement[bool] | None:
 
 
 def _in_scope_clause(actor: User) -> ColumnElement[bool]:
-    """SQL twin of `in_scope`: whoever is not tied to an organization, plus those of the actor's own."""
-    scoped = set(STAFF_TYPES) | ({"recycler"} if actor.user_type_code == "association" else set())
-    if actor.organization_id is None:
-        return User.user_type_code.not_in(scoped)
-    return or_(
-        User.user_type_code.not_in(scoped),
-        and_(User.user_type_code.in_(scoped), User.organization_id == actor.organization_id),
-    )
+    """SQL twin of `_reachable`: whoever is not tied to an organization, plus what the actor's own reaches.
+
+    Staff are reached from their own organization only; a recycler, from the association they belong to and
+    from the ECAs linked to it.
+    """
+    others = User.user_type_code.not_in(set(STAFF_TYPES) | {"recycler"})
+    org = actor.organization_id
+    staff = and_(User.user_type_code.in_(STAFF_TYPES), User.organization_id == org) if org is not None else false()
+    if org is None and actor.user_type_code in ("eca", "association"):
+        recyclers: ColumnElement[bool] = false()
+    elif actor.user_type_code == "association":
+        recyclers = and_(User.user_type_code == "recycler", User.organization_id == org)
+    elif actor.user_type_code == "eca":
+        recyclers = scope.recycler_linked_to(org)  # type: ignore[arg-type]
+    else:
+        recyclers = User.user_type_code == "recycler"
+    return or_(others, staff, recyclers)
+
+
+def _reachable(db: Session, actor: User, target: User) -> bool:
+    """`in_scope`, plus the link rule that needs the database: an ECA reaches the recyclers of the
+    associations it is actively linked to, and only those."""
+    if not in_scope(actor, target):
+        return False
+    if actor.user_type_code == "eca" and target.user_type_code == "recycler":
+        if actor.organization_id is None:
+            return False
+        return db.scalar(select(User.id).where(
+            User.id == target.id, scope.recycler_linked_to(actor.organization_id))) is not None
+    return True
 
 
 def _user_not_found() -> ApiError:
@@ -119,7 +142,7 @@ def get_user(db: Session, actor: User, user_id: uuid.UUID) -> User:
     if not is_self and user.user_type_code not in visible_user_types(actor):
         raise forbidden("No puedes consultar usuarios de ese tipo", "user_type_not_visible")
     # Someone else's staff answers like a missing user: it does not confirm they exist.
-    if not is_self and not in_scope(actor, user):
+    if not is_self and not _reachable(db, actor, user):
         raise _user_not_found()
     return user
 
@@ -134,7 +157,7 @@ def set_verification_status(
     if user.user_type_code != "recycler":
         raise ApiError("not_a_recycler", status_code=status.HTTP_400_BAD_REQUEST,
                        detail="Este endpoint solo aplica para recicladores")
-    if not in_scope(actor, user):  # only the association the recycler belongs to verifies them
+    if not _reachable(db, actor, user):  # only the association the recycler belongs to verifies them
         raise _user_not_found()
 
     user.verification_status = request.status
@@ -175,7 +198,7 @@ def update_user(db: Session, actor: User, user_id: uuid.UUID, request: UpdateUse
 
     if not is_self and user.user_type_code not in manageable_user_types(actor):
         raise forbidden("No puedes editar usuarios de ese tipo", "user_type_not_editable")
-    if not is_self and not in_scope(actor, user):
+    if not is_self and not _reachable(db, actor, user):
         raise _user_not_found()
 
     privileged = request.model_fields_set & PRIVILEGED_USER_FIELDS
@@ -272,7 +295,7 @@ def resend_invitation(db: Session, actor: User, user_id: uuid.UUID) -> tuple[Use
     user = db.get(User, user_id)
     if (
         user is None or user.user_type_code not in STAFF_TYPES
-        or user.user_type_code not in manageable_user_types(actor) or not in_scope(actor, user)
+        or user.user_type_code not in manageable_user_types(actor) or not _reachable(db, actor, user)
     ):
         raise _user_not_found()
     if user.password_hash:

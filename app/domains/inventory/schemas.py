@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MaterialResponse(BaseModel):
@@ -17,6 +17,11 @@ class WarehouseResponse(BaseModel):
     id:      uuid.UUID
     name:    str
     address: str | None
+
+
+class CreateWarehouseRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    address: str | None = Field(default=None, max_length=500)
 
 
 class InventoryItemResponse(BaseModel):
