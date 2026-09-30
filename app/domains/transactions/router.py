@@ -1,14 +1,10 @@
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.errors import ApiError
-from app.core.pagination import paginate
 from app.core.permissions import (
     PAYMENTS,
     TRANSACTIONS_READ,
@@ -16,16 +12,8 @@ from app.core.permissions import (
     ensure_role,
 )
 from app.core.security import get_current_user, require_roles
-from app.domains.audit import service as audit
-from app.domains.audit.actions import Action
-from app.domains.inventory.models import Material
-from app.domains.organizations import scope
 from app.domains.transactions import service as tx_service
-from app.domains.transactions.models import (
-    Transaction,
-    TransactionStatus,
-    TransactionType,
-)
+from app.domains.transactions.models import TransactionStatus, TransactionType
 from app.domains.transactions.schemas import (
     CreateSaleRequest,
     TransactionListResponse,
@@ -48,22 +36,8 @@ def list_transactions(
     db:          Session                 = Depends(get_db),
     actor:       User                    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    query = select(Transaction).where(scope.transaction_scope(actor))
-    if type:
-        query = query.where(Transaction.type == type)
-    if status_:
-        query = query.where(Transaction.status == status_)
-    if material_code:
-        query = query.where(Transaction.material_code == material_code)
-
-    total, items = paginate(
-        db, query, Transaction.occurred_at.desc(), Transaction.id, limit=limit, offset=offset,
-        options=(
-            selectinload(Transaction.material),
-            selectinload(Transaction.warehouse),
-            selectinload(Transaction.recycler),
-        ),
-    )
+    total, items = tx_service.list_transactions(
+        db, actor, type_=type, status_=status_, material_code=material_code, limit=limit, offset=offset)
     return TransactionListResponse(total=total, items=items)
 
 
@@ -72,27 +46,7 @@ def transaction_stats(
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    now   = datetime.now(timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    this_month = Transaction.occurred_at >= start
-    mine = scope.transaction_scope(actor)
-
-    per_type = {
-        tx_type: (count, kg, value)
-        for tx_type, count, kg, value in db.execute(
-            select(
-                Transaction.type,
-                func.count(Transaction.id),
-                func.coalesce(func.sum(Transaction.kg), 0),
-                func.coalesce(func.sum(Transaction.kg * Transaction.price_per_kg), 0),
-            ).where(this_month, mine).group_by(Transaction.type)
-        ).all()
-    }
-    pending = db.scalar(
-        select(func.count(Transaction.id)).where(this_month, mine, Transaction.status == TransactionStatus.pending)
-    )
-
+    per_type, pending = tx_service.month_stats(db, actor)
     empty = (0, Decimal("0"), Decimal("0"))
     purchases = per_type.get(TransactionType.purchase, empty)
     sales = per_type.get(TransactionType.sale, empty)
@@ -113,28 +67,7 @@ def create_sale(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(require_roles(*TRANSACTIONS_WRITE)),
 ):
-    if not db.get(Material, request.material_code):
-        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
-    scope.get_own_warehouse(db, current_user, request.warehouse_id)  # a sale is out of the ECA's own warehouse
-
-    tx = tx_service.create_sale(
-        db=db,
-        material_code=request.material_code,
-        warehouse_id=request.warehouse_id,
-        kg=request.kg,
-        price_per_kg=request.price_per_kg,
-        created_by=current_user.id,
-        buyer_name=request.buyer_name,
-        buyer_nit=request.buyer_nit,
-        buyer_email=request.buyer_email,
-    )
-    audit.record(
-        db, Action.TRANSACTION_CREATED, actor=current_user, target_type="transaction", target_id=tx.id,
-        details={"type": "sale", "material": request.material_code, "kg": str(request.kg),
-                 "price_per_kg": str(request.price_per_kg)})
-    db.commit()
-    db.refresh(tx)
-    return tx
+    return tx_service.register_sale(db, current_user, request)
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
@@ -143,11 +76,7 @@ def get_transaction(
     db:             Session = Depends(get_db),
     actor:          User    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    tx = db.scalars(select(Transaction).where(
-        Transaction.id == transaction_id, scope.transaction_scope(actor))).first()
-    if not tx:
-        raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
-    return tx
+    return tx_service.get_transaction(db, actor, transaction_id)
 
 
 @router.patch("/{transaction_id}/status", response_model=TransactionResponse)
@@ -159,34 +88,4 @@ def update_status(
 ):
     # Paying a purchase moves money; cancelling/delivering moves stock.
     ensure_role(actor, PAYMENTS if request.status == TransactionStatus.paid else TRANSACTIONS_WRITE)
-
-    # FOR UPDATE: two concurrent cancels must not both restore the stock.
-    tx = db.scalars(select(Transaction).where(
-        Transaction.id == transaction_id, scope.transaction_scope(actor)).with_for_update()).first()
-    if not tx:
-        raise ApiError("transaction_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Transacción no encontrada")
-
-    previous = tx.status.value
-
-    if request.status == TransactionStatus.cancelled:
-        tx_service.cancel_transaction(db, tx)
-    elif request.status == TransactionStatus.delivered:
-        tx_service.mark_delivered(db, tx)
-    elif request.status == TransactionStatus.paid:
-        if tx.type != TransactionType.purchase or tx.status != TransactionStatus.pending:
-            raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición no válida")
-        tx.status = TransactionStatus.paid
-    else:
-        raise ApiError("invalid_transition", status_code=status.HTTP_400_BAD_REQUEST, detail="Transición de estado no soportada")
-
-    audit.record(
-        db,
-        {TransactionStatus.cancelled: Action.TRANSACTION_CANCELLED,
-         TransactionStatus.delivered: Action.TRANSACTION_DELIVERED,
-         TransactionStatus.paid: Action.TRANSACTION_PAID}[request.status],
-        actor=actor, target_type="transaction", target_id=tx.id,
-        details={"from": previous, "type": tx.type.value, "material": tx.material_code,
-                 "kg": str(tx.kg), "price_per_kg": str(tx.price_per_kg)})
-    db.commit()
-    db.refresh(tx)
-    return tx
+    return tx_service.update_status(db, actor, transaction_id, request)
