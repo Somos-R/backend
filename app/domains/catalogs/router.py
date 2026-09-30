@@ -2,9 +2,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core import search
 from app.core.database import get_db
 from app.core.permissions import PLATFORM_ROLES, ROLE_USER_TYPE
 from app.core.rate_limit import limiter, register_limit
@@ -12,7 +13,6 @@ from app.domains.catalogs.docs import ASSOCIATIONS_DOCS, DOCUMENT_TYPES_DOCS, RO
 from app.domains.catalogs.models import DocumentType, Role
 from app.domains.organizations.enums import OrganizationStatus, OrganizationType
 from app.domains.organizations.models import Organization
-from app.domains.users.service import MIN_SEARCH_LENGTH
 
 router = APIRouter(prefix="/catalogs", tags=["catalogs"])
 
@@ -56,10 +56,9 @@ def get_associations(
 ):
     query = select(Organization).where(
         Organization.type == OrganizationType.association, Organization.status == OrganizationStatus.approved)
-    text = (q or "").strip()
-    if len(text) >= MIN_SEARCH_LENGTH:
-        escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.where(func.unaccent(Organization.legal_name).ilike(func.unaccent(f"%{escaped}%"), escape="\\"))
+    name_match = search.contains(q, [Organization.legal_name])
+    if name_match is not None:
+        query = query.where(name_match)
     return db.scalars(query.order_by(Organization.legal_name, Organization.id).offset(offset).limit(limit)).all()
 
 

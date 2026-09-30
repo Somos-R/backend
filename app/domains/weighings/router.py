@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core import search
 from app.core.database import get_db
 from app.core.errors import ApiError
 from app.core.pagination import paginate
@@ -50,6 +51,7 @@ def list_weighings(
     warehouse_id:  uuid.UUID | None = Query(default=None),
     status_:       WeighingStatus | None = Query(default=None, alias="status"),
     affiliation:   AffiliationStatus | None = Query(default=None),
+    q:             str | None       = Query(default=None, max_length=100),
     limit:         int              = Query(default=20, ge=1, le=100),
     offset:        int              = Query(default=0, ge=0),
     db:            Session          = Depends(get_db),
@@ -74,6 +76,12 @@ def list_weighings(
         query = query.where(Weighing.status == status_)
     if affiliation:
         query = query.where(Weighing.affiliation_status == affiliation)
+    # Text search over who delivered: the registered recycler's name and document, or the name and document
+    # of an unregistered seller. It narrows the list; it never widens what the actor may already see.
+    recycler_match = search.contains(q, [User.full_name, User.id_number])
+    seller_match = search.contains(q, [Weighing.seller_name, Weighing.seller_id_number])
+    if recycler_match is not None and seller_match is not None:
+        query = query.where(or_(Weighing.recycler_id.in_(select(User.id).where(recycler_match)), seller_match))
 
     total, weighings = paginate(
         db, query, Weighing.occurred_at.desc(), Weighing.id, limit=limit, offset=offset,
