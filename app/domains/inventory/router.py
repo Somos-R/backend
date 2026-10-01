@@ -1,11 +1,14 @@
+import enum
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.permissions import ECA_ADMIN, INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
+from app.core.sorting import SortOrder
 from app.domains.inventory import service as inventory_service
 from app.domains.inventory.schemas import (
     CreateWarehouseRequest,
@@ -21,11 +24,23 @@ from app.domains.users.models import User
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
+class InventorySort(str, enum.Enum):
+    material = "material"
+    warehouse = "warehouse"
+    stock_kg = "stock_kg"
+    price_per_kg = "price_per_kg"
+    total_value = "total_value"
+    status = "status"
+    updated_at = "updated_at"
+
+
 @router.get("", response_model=InventoryListResponse)
 def list_inventory(
     material_code: str | None = Query(default=None),
     warehouse_id: uuid.UUID | None = Query(default=None),
     status_: str | None = Query(default=None, alias="status", description="available | low_stock | out_of_stock"),
+    sort: InventorySort | None = Query(default=None, description="Default: by material code, then warehouse"),
+    order: SortOrder = Query(default=SortOrder.asc),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
@@ -33,8 +48,30 @@ def list_inventory(
 ):
     total, items = inventory_service.list_inventory(
         db, actor, material_code=material_code, warehouse_id=warehouse_id, status_=status_,
-        limit=limit, offset=offset)
+        sort=sort.value if sort else None, descending=order is SortOrder.desc, limit=limit, offset=offset)
     return InventoryListResponse(total=total, items=items)
+
+
+@router.get("/export.csv", summary="Download the inventory matching the filters as CSV")
+def export_inventory(
+    material_code: str | None = Query(default=None),
+    warehouse_id: uuid.UUID | None = Query(default=None),
+    status_: str | None = Query(default=None, alias="status", description="available | low_stock | out_of_stock"),
+    sort: InventorySort | None = Query(default=None, description="Default: by material code, then warehouse"),
+    order: SortOrder = Query(default=SortOrder.asc),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
+):
+    items = inventory_service.export_inventory(
+        db, actor, material_code=material_code, warehouse_id=warehouse_id, status_=status_,
+        sort=sort.value if sort else None, descending=order is SortOrder.desc)
+    header = ["material", "warehouse", "stock_kg", "stock_min_kg", "price_per_kg", "total_value", "status",
+              "updated_at"]
+    rows = [
+        [i.material.label, i.warehouse.name, i.stock_kg, i.stock_min_kg, i.price_per_kg, i.total_value, i.status,
+         i.updated_at.isoformat()]
+        for i in items]
+    return csv_response("inventory.csv", header, rows)
 
 
 @router.get("/stats", response_model=InventoryStatsResponse)

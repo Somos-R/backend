@@ -14,6 +14,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.domains.audit import service as audit
@@ -113,6 +114,46 @@ def subtract_stock(
     )
 
 
+# Material and warehouse are ordered by the name people read, not by their code or id.
+SORT_COLUMNS = {
+    "material": select(Material.label).where(Material.code == InventoryItem.material_code).scalar_subquery(),
+    "warehouse": select(Warehouse.name).where(Warehouse.id == InventoryItem.warehouse_id).scalar_subquery(),
+    "stock_kg": InventoryItem.stock_kg,
+    "price_per_kg": InventoryItem.price_per_kg,
+    "total_value": InventoryItem.stock_kg * InventoryItem.price_per_kg,
+    "status": InventoryItem.status,
+    "updated_at": InventoryItem.updated_at,
+}
+_RELATIONS = (selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse))
+
+
+def _visible_items(
+    actor: User,
+    *,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: str | None,
+):
+    """The inventory rows the actor may read, narrowed by the filters."""
+    query = select(InventoryItem).where(scope.inventory_scope(actor, InventoryItem.warehouse_id))
+    if material_code:
+        query = query.where(InventoryItem.material_code == material_code)
+    if warehouse_id:
+        query = query.where(InventoryItem.warehouse_id == warehouse_id)
+    if status_:
+        query = query.where(InventoryItem.status == status_)
+    return query
+
+
+def _ordering(sort: str | None, descending: bool) -> tuple:
+    if sort is None:
+        # No order asked: the stable default every client got before ordering existed.
+        return (InventoryItem.material_code, InventoryItem.warehouse_id)
+    column = SORT_COLUMNS[sort]
+    # (material, warehouse) is unique, so it keeps pages stable when many rows share the sorted value.
+    return (column.desc() if descending else column.asc(), InventoryItem.material_code, InventoryItem.warehouse_id)
+
+
 def list_inventory(
     db: Session,
     actor: User,
@@ -120,25 +161,39 @@ def list_inventory(
     material_code: str | None,
     warehouse_id: uuid.UUID | None,
     status_: str | None,
+    sort: str | None = None,
+    descending: bool = False,
     limit: int,
     offset: int,
 ) -> tuple[int, list[InventoryItem]]:
-    query = select(InventoryItem).where(scope.inventory_scope(actor, InventoryItem.warehouse_id))
+    """One page of what the actor may read, in the requested order."""
+    query = _visible_items(actor, material_code=material_code, warehouse_id=warehouse_id, status_=status_)
+    return paginate(db, query, *_ordering(sort, descending), limit=limit, offset=offset, options=_RELATIONS)
 
-    if material_code:
-        query = query.where(InventoryItem.material_code == material_code)
-    if warehouse_id:
-        query = query.where(InventoryItem.warehouse_id == warehouse_id)
-    if status_:
-        query = query.where(InventoryItem.status == status_)
 
-    return paginate(
-        db, query,
-        # warehouse_id breaks ties so that pages never overlap or skip rows
-        InventoryItem.material_code, InventoryItem.warehouse_id,
-        limit=limit, offset=offset,
-        options=(selectinload(InventoryItem.material), selectinload(InventoryItem.warehouse)),
-    )
+def export_inventory(
+    db: Session,
+    actor: User,
+    *,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: str | None,
+    sort: str | None,
+    descending: bool,
+) -> list[InventoryItem]:
+    """Every inventory row matching the filters (not one page), for a file. Refuses rather than truncating:
+    a silently partial report would be taken for the whole."""
+    query = _visible_items(actor, material_code=material_code, warehouse_id=warehouse_id, status_=status_)
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+    if total > MAX_EXPORT_ROWS:
+        raise ApiError(
+            "export_too_large", status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El reporte tiene {total} filas; el máximo es {MAX_EXPORT_ROWS}. Acote los filtros")
+    rows = db.scalars(query.options(*_RELATIONS).order_by(*_ordering(sort, descending))).all()
+    audit.record(db, Action.INVENTORY_EXPORTED, actor=actor, target_type="inventory", target_id=None,
+                 details={"rows": len(rows)})
+    db.commit()
+    return list(rows)
 
 
 def stats(db: Session, actor: User) -> tuple[Decimal, Decimal, dict[str, int]]:
