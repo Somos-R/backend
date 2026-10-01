@@ -33,6 +33,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # source of most base-image CVEs). Remove them from the system Python; the venv's own pip is removed below.
 RUN pip uninstall -y pip setuptools wheel
 
+# The base image can lag behind Debian's security fixes: pull the patched OpenSSL packages (Trivy fails the build
+# on HIGH CVEs that already have a fix). --only-upgrade never installs anything that is not already there.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends --only-upgrade openssl libssl3t64 openssl-provider-legacy && \
+    rm -rf /var/lib/apt/lists/*
+
 # Run as an unprivileged user: a compromised process must not own the filesystem or be root.
 RUN useradd --system --uid 10001 --user-group --no-create-home --shell /usr/sbin/nologin app
 
