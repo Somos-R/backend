@@ -74,6 +74,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "links.decide": frozenset({ASSOC_ADMIN}),  # the Association accepts or rejects
     "links.view": ORG_ADMINS,  # see the links of your own organization (either side may remove one)
     "staff.view": ORG_ADMINS,  # only admins see their organization's staff (visible_user_types)
+    "staff.manage": ORG_ADMINS,  # PATCH /users/{id}/status: deactivate or reactivate your own staff
 }
 
 # What Somos R's own roles may do, by capability. Endpoints of the backoffice ask for a capability,

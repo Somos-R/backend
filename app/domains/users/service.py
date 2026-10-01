@@ -254,6 +254,31 @@ def _operating_organization(db: Session, actor: User) -> Organization:
     return organization
 
 
+def set_staff_active(db: Session, actor: User, user_id: uuid.UUID, active: bool, reason: str | None) -> User:
+    """Deactivate or reactivate someone of the actor's own organization. Deactivating signs them out everywhere.
+
+    Only the organization's staff: a recycler is handled by their association (verification) or by Somos R.
+    Someone else's staff answers like a missing user; nobody changes their own status.
+    """
+    user = db.get(User, user_id)
+    if user is None or user.user_type_code not in ("eca", "association") or not in_scope(actor, user):
+        raise _user_not_found()
+    if user.id == actor.id:
+        raise ApiError("cannot_change_own_status", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="No puedes desactivar tu propia cuenta")
+    if user.is_active == active:
+        return user  # already so: nothing to do, nothing to record
+    user.is_active = active
+    if not active:
+        auth_service.revoke_all_sessions(db, user)
+    audit.record(
+        db, Action.USER_ACTIVATED if active else Action.USER_DEACTIVATED, actor=actor,
+        target_type="user", target_id=user.id, details={"reason": reason} if reason else None)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def invite_staff(db: Session, actor: User, request: InviteStaffRequest) -> tuple[User, str, str]:
     """Create the account (no password) inside the actor's organization.
 

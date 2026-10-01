@@ -8,7 +8,7 @@ EXPECTED = {
     "eca_admin": {
         "recyclers.view", "weighings.view", "weighings.create", "weighings.review", "weighings.pay",
         "inventory.view", "inventory.edit", "transactions.view", "transactions.create",
-        "transactions.manage", "transactions.pay", "staff.invite", "staff.view",
+        "transactions.manage", "transactions.pay", "staff.invite", "staff.view", "staff.manage",
         "links.request", "links.view",
     },
     "eca_operator": {
@@ -21,7 +21,7 @@ EXPECTED = {
     },
     "association_admin": {
         "recyclers.view", "recyclers.verify", "weighings.view", "weighings.review", "weighings.pay",
-        "inventory.view", "transactions.view", "transactions.pay", "audit.view", "staff.invite", "staff.view",
+        "inventory.view", "transactions.view", "transactions.pay", "audit.view", "staff.invite", "staff.view", "staff.manage",
         "links.decide", "links.view",
     },
     "association_operator": {

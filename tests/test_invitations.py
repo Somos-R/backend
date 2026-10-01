@@ -321,10 +321,10 @@ class TestLimits:
 class TestWhatTheWebNeeds:
     def test_only_organization_admins_are_told_they_can_invite_and_see_staff(self, client_as, db, eca):
         caps = client_as(eca[1]).get("/auth/me").json()["capabilities"]
-        assert {"staff.invite", "staff.view"} <= set(caps)
+        assert {"staff.invite", "staff.view", "staff.manage"} <= set(caps)
         operator = factories.make_user(db, "eca", role_code="eca_operator", organization_id=eca[0].id)
         caps = client_as(operator).get("/auth/me").json()["capabilities"]
-        assert not {"staff.invite", "staff.view"} & set(caps)
+        assert not {"staff.invite", "staff.view", "staff.manage"} & set(caps)
 
     def test_pending_activation_tells_an_invitee_from_someone_active(self, client_as, client, eca, outbox):
         payload = _payload()

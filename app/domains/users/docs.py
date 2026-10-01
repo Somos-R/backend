@@ -247,3 +247,23 @@ identificando a la persona con `seller` en `POST /weighings`.
 **Quién puede:** quienes registran pesajes (`eca_admin`, `eca_operator`). `id_type` es opcional.
 """,
 }
+
+
+SET_STAFF_STATUS_DOCS: dict[str, Any] = {
+    "summary": "Desactivar o reactivar a alguien de tu organización",
+    "description": """
+Desactiva (`is_active: false`) o reactiva a una persona del personal de **tu organización**. Al desactivar, sus
+sesiones se cierran en el momento y no puede volver a entrar hasta que se reactive. `reason` es opcional (máx. 200).
+
+**Quién puede:** administradores de organización (`eca_admin`, `association_admin`); capacidad `staff.manage`.
+
+Solo personal de ECA o asociación: los recicladores los gestiona su asociación (verificación) o Somos R.
+Responde `404 user_not_found` si la persona no es de tu organización (igual que si no existiera) y
+`403 cannot_change_own_status` si es tu propia cuenta. Si ya estaba en ese estado no hace nada. Queda auditado
+(`user.deactivated` / `user.activated`).
+""",
+    "responses": {
+        403: {"description": "No eres administrador de organización, o es tu propia cuenta"},
+        404: {"description": "La persona no existe o no es de tu organización"},
+    },
+}
