@@ -6,7 +6,7 @@ from fastapi import status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core import search
+from app.core import events, search
 from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
@@ -14,10 +14,10 @@ from app.core.permissions import forbidden
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.catalogs.service import ensure_document_type_is_active
-from app.domains.inventory import service as inventory_service
 from app.domains.inventory.service import ensure_material_is_active
 from app.domains.organizations import scope
 from app.domains.users.models import User
+from app.domains.weighings.events import WeighingValidated
 from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
@@ -60,18 +60,16 @@ def validate_weighing(db: Session, weighing: Weighing, validator_id: uuid.UUID) 
     weighing.validated_at  = datetime.now(timezone.utc)
     weighing.updated_at    = datetime.now(timezone.utc)
 
-    # Side effect: update inventory
-    inventory_service.add_stock(
-        db=db,
+    # Inventory and transactions react to this (app/domains/handlers.py), in this same transaction.
+    events.publish(db, WeighingValidated(
+        weighing_id=weighing.id,
+        recycler_id=weighing.recycler_id,
         material_code=weighing.material_code,
         warehouse_id=weighing.warehouse_id,
         kg=Decimal(str(weighing.kg)),
         price_per_kg=Decimal(str(weighing.price_per_kg)),
-    )
-
-    # Side effect: create purchase transaction (imported here to avoid circular imports at module load)
-    from app.domains.transactions import service as tx_service
-    tx_service.create_purchase_from_weighing(db=db, weighing=weighing, created_by=validator_id)
+        validated_by=validator_id,
+    ))
 
     return weighing
 

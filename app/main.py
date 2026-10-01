@@ -18,6 +18,7 @@ from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.core.structured_logging import configure_logging
+from app.domains import handlers as domain_handlers
 from app.domains.admin.catalogs_router import router as admin_catalogs_router
 from app.domains.admin.router import router as admin_router
 from app.domains.admin.users_router import router as admin_users_router
@@ -41,6 +42,7 @@ CORS_HEADERS = ["Authorization", "Content-Type", "Accept"]
 
 def create_app() -> FastAPI:
     """Build the application from the current settings (a function so tests can vary them)."""
+    domain_handlers.register()  # domains react to each other's events (idempotent)
     configure_logging(settings.log_level, settings.use_json_logs)
     init_sentry(settings)
 
