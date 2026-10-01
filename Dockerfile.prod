@@ -29,20 +29,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FORWARDED_ALLOW_IPS="*" \
     PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus
 
-# Pick up the base image's security fixes that are published but not yet in the python:3.11-slim tag
-# (Trivy fails the build on fixable HIGH/CRITICAL). Only OpenSSL is upgraded, to keep the layer small.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends --only-upgrade openssl libssl3t64 openssl-provider-legacy && \
-    rm -rf /var/lib/apt/lists/*
-
 # The running app never installs anything, so pip/setuptools/wheel are only attack surface (and the
 # source of most base-image CVEs). Remove them from the system Python; the venv's own pip is removed below.
 RUN pip uninstall -y pip setuptools wheel
 
-# The base image can lag behind Debian's security fixes: pull the patched OpenSSL packages (Trivy fails the build
-# on HIGH CVEs that already have a fix). --only-upgrade never installs anything that is not already there.
+# The base image can lag behind Debian's security fixes, and Trivy fails the build on HIGH CVEs that already
+# have one. Upgrade what is already installed (it never adds packages) instead of naming them one by one.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends --only-upgrade openssl libssl3t64 openssl-provider-legacy && \
+    apt-get upgrade -y --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
 # Run as an unprivileged user: a compromised process must not own the filesystem or be root.
