@@ -17,6 +17,7 @@ from app.core.permissions import (
     has_role,
 )
 from app.core.security import get_current_user, require_roles
+from app.core.sorting import SortOrder
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
 from app.domains.weighings.models import AffiliationStatus, WeighingStatus
@@ -38,10 +39,6 @@ class WeighingSort(str, enum.Enum):
     total_value = "total_value"
     status = "status"
 
-
-class SortOrder(str, enum.Enum):
-    asc = "asc"
-    desc = "desc"
 
 
 def get_weighing_reader(user: User = Depends(get_current_user)) -> User:

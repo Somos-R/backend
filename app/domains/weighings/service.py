@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import search
+from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.permissions import forbidden
@@ -105,7 +106,6 @@ SORT_COLUMNS = {
     "total_value": Weighing.kg * Weighing.price_per_kg,
     "status": Weighing.status,
 }
-MAX_EXPORT_ROWS = 10_000
 _RELATIONS = (selectinload(Weighing.recycler), selectinload(Weighing.material), selectinload(Weighing.warehouse))
 
 
