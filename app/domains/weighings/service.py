@@ -98,8 +98,18 @@ def mark_paid(db: Session, weighing: Weighing) -> Weighing:
     return weighing
 
 
-def list_weighings(
-    db: Session,
+SORT_COLUMNS = {
+    "occurred_at": Weighing.occurred_at,
+    "kg": Weighing.kg,
+    "price_per_kg": Weighing.price_per_kg,
+    "total_value": Weighing.kg * Weighing.price_per_kg,
+    "status": Weighing.status,
+}
+MAX_EXPORT_ROWS = 10_000
+_RELATIONS = (selectinload(Weighing.recycler), selectinload(Weighing.material), selectinload(Weighing.warehouse))
+
+
+def _visible_weighings(
     actor: User,
     *,
     recycler_id: uuid.UUID | None,
@@ -108,10 +118,10 @@ def list_weighings(
     status_: WeighingStatus | None,
     affiliation: AffiliationStatus | None,
     q: str | None,
-    limit: int,
-    offset: int,
-) -> tuple[int, list[Weighing]]:
-    """One page of what the actor may read; a recycler only ever gets their own."""
+    date_from: datetime | None,
+    date_to: datetime | None,
+):
+    """The weighings the actor may read, narrowed by the filters; a recycler only ever gets their own."""
     if actor.user_type_code == "recycler":
         if recycler_id and recycler_id != actor.id:
             raise forbidden()
@@ -131,21 +141,79 @@ def list_weighings(
         query = query.where(Weighing.status == status_)
     if affiliation:
         query = query.where(Weighing.affiliation_status == affiliation)
+    if date_from:
+        query = query.where(Weighing.occurred_at >= date_from)
+    if date_to:
+        query = query.where(Weighing.occurred_at <= date_to)
     # Text search over who delivered: the registered recycler's name and document, or the name and document
     # of an unregistered seller. It narrows the list; it never widens what the actor may already see.
     recycler_match = search.contains(q, [User.full_name, User.id_number])
     seller_match = search.contains(q, [Weighing.seller_name, Weighing.seller_id_number])
     if recycler_match is not None and seller_match is not None:
         query = query.where(or_(Weighing.recycler_id.in_(select(User.id).where(recycler_match)), seller_match))
+    return query
 
-    return paginate(
-        db, query, Weighing.occurred_at.desc(), Weighing.id, limit=limit, offset=offset,
-        options=(
-            selectinload(Weighing.recycler),
-            selectinload(Weighing.material),
-            selectinload(Weighing.warehouse),
-        ),
-    )
+
+def _ordering(sort: str, descending: bool) -> tuple:
+    column = SORT_COLUMNS[sort]
+    # `id` last keeps pages stable when many rows share the sorted value.
+    return (column.desc() if descending else column.asc(), Weighing.id)
+
+
+def list_weighings(
+    db: Session,
+    actor: User,
+    *,
+    recycler_id: uuid.UUID | None,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: WeighingStatus | None,
+    affiliation: AffiliationStatus | None,
+    q: str | None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    sort: str = "occurred_at",
+    descending: bool = True,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[Weighing]]:
+    """One page of what the actor may read, in the requested order."""
+    query = _visible_weighings(
+        actor, recycler_id=recycler_id, material_code=material_code, warehouse_id=warehouse_id,
+        status_=status_, affiliation=affiliation, q=q, date_from=date_from, date_to=date_to)
+    return paginate(db, query, *_ordering(sort, descending), limit=limit, offset=offset, options=_RELATIONS)
+
+
+def export_weighings(
+    db: Session,
+    actor: User,
+    *,
+    recycler_id: uuid.UUID | None,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    status_: WeighingStatus | None,
+    affiliation: AffiliationStatus | None,
+    q: str | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    sort: str,
+    descending: bool,
+) -> list[Weighing]:
+    """Every weighing matching the filters (not one page), for a file. Refuses rather than truncating: a
+    silently partial report would be taken for the whole."""
+    query = _visible_weighings(
+        actor, recycler_id=recycler_id, material_code=material_code, warehouse_id=warehouse_id,
+        status_=status_, affiliation=affiliation, q=q, date_from=date_from, date_to=date_to)
+    total = db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0
+    if total > MAX_EXPORT_ROWS:
+        raise ApiError(
+            "export_too_large", status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"El reporte tiene {total} pesajes; el máximo es {MAX_EXPORT_ROWS}. Acote el periodo o los filtros")
+    rows = db.scalars(query.options(*_RELATIONS).order_by(*_ordering(sort, descending))).all()
+    audit.record(db, Action.WEIGHINGS_EXPORTED, actor=actor, target_type="weighing", target_id=None,
+                 details={"rows": len(rows)})
+    db.commit()
+    return list(rows)
 
 
 def month_stats(db: Session, actor: User) -> tuple[int, Decimal, int, list[tuple[str, Decimal]]]:
