@@ -60,6 +60,7 @@ class Action:
     TRANSACTION_CANCELLED = "transaction.cancelled"
     TRANSACTION_DELIVERED = "transaction.delivered"
     TRANSACTION_PAID = "transaction.paid"
+    TRANSACTIONS_EXPORTED = "transaction.exported"
 
     # --- Inventory ---
     INVENTORY_UPDATED = "inventory.updated"

@@ -1,9 +1,12 @@
+import enum
 import uuid
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.permissions import (
     PAYMENTS,
@@ -12,6 +15,7 @@ from app.core.permissions import (
     ensure_role,
 )
 from app.core.security import get_current_user, require_roles
+from app.core.sorting import SortOrder
 from app.domains.transactions import service as tx_service
 from app.domains.transactions.models import TransactionStatus, TransactionType
 from app.domains.transactions.schemas import (
@@ -26,19 +30,58 @@ from app.domains.users.models import User
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+class TransactionSort(str, enum.Enum):
+    occurred_at = "occurred_at"
+    kg = "kg"
+    price_per_kg = "price_per_kg"
+    total_value = "total_value"
+    status = "status"
+
+
 @router.get("", response_model=TransactionListResponse)
 def list_transactions(
     type:        TransactionType | None   = Query(default=None),
     status_:     TransactionStatus | None = Query(default=None, alias="status"),
     material_code: str | None            = Query(default=None),
+    date_from:   datetime | None          = Query(default=None, description="occurred_at >= this instant"),
+    date_to:     datetime | None          = Query(default=None, description="occurred_at <= this instant"),
+    sort:        TransactionSort          = Query(default=TransactionSort.occurred_at),
+    order:       SortOrder                = Query(default=SortOrder.desc),
     limit:       int                     = Query(default=20, ge=1, le=100),
     offset:      int                     = Query(default=0, ge=0),
     db:          Session                 = Depends(get_db),
     actor:       User                    = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
     total, items = tx_service.list_transactions(
-        db, actor, type_=type, status_=status_, material_code=material_code, limit=limit, offset=offset)
+        db, actor, type_=type, status_=status_, material_code=material_code, date_from=date_from, date_to=date_to,
+        sort=sort.value, descending=order is SortOrder.desc, limit=limit, offset=offset)
     return TransactionListResponse(total=total, items=items)
+
+
+@router.get("/export.csv", summary="Download the transactions matching the filters as CSV")
+def export_transactions(
+    type:        TransactionType | None   = Query(default=None),
+    status_:     TransactionStatus | None = Query(default=None, alias="status"),
+    material_code: str | None            = Query(default=None),
+    date_from:   datetime | None          = Query(default=None),
+    date_to:     datetime | None          = Query(default=None),
+    sort:        TransactionSort          = Query(default=TransactionSort.occurred_at),
+    order:       SortOrder                = Query(default=SortOrder.desc),
+    db:          Session                 = Depends(get_db),
+    actor:       User                    = Depends(require_roles(*TRANSACTIONS_READ)),
+):
+    transactions = tx_service.export_transactions(
+        db, actor, type_=type, status_=status_, material_code=material_code, date_from=date_from, date_to=date_to,
+        sort=sort.value, descending=order is SortOrder.desc)
+    header = ["date", "type", "counterparty", "document", "material", "warehouse", "kg", "price_per_kg",
+              "total_value", "status"]
+    rows = [
+        [t.occurred_at.isoformat(), t.type.value,
+         t.buyer_name if t.type == TransactionType.sale else (t.recycler.full_name if t.recycler else None),
+         t.buyer_nit if t.type == TransactionType.sale else (t.recycler.id_number if t.recycler else None),
+         t.material.label, t.warehouse.name, t.kg, t.price_per_kg, t.total_value, t.status.value]
+        for t in transactions]
+    return csv_response("transactions.csv", header, rows)
 
 
 @router.get("/stats", response_model=TransactionStatsResponse)

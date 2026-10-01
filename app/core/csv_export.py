@@ -6,6 +6,9 @@ from typing import Any
 
 from fastapi import Response
 
+# The most rows one download may hold; above it the request is refused rather than truncated.
+MAX_EXPORT_ROWS = 10_000
+
 # A cell that starts with one of these is read as a formula by spreadsheets (CSV injection): text a seller
 # typed could run in the operator's Excel. A leading quote keeps it text.
 _FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
