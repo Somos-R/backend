@@ -11,7 +11,6 @@ from app.core.pagination import paginate
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory import service as inventory_service
-from app.domains.inventory.models import Material
 from app.domains.organizations import scope
 from app.domains.transactions.models import (
     Transaction,
@@ -172,8 +171,7 @@ def month_stats(db: Session, actor: User) -> tuple[dict[TransactionType, tuple[i
 
 
 def register_sale(db: Session, actor: User, request: CreateSaleRequest) -> Transaction:
-    if not db.get(Material, request.material_code):
-        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+    inventory_service.ensure_material_is_active(db, request.material_code)
     scope.get_own_warehouse(db, actor, request.warehouse_id)  # a sale is out of the ECA's own warehouse
 
     tx = create_sale(

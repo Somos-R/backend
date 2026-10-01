@@ -12,9 +12,9 @@ from app.core.pagination import paginate
 from app.core.permissions import forbidden
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.catalogs.models import DocumentType
+from app.domains.catalogs.service import ensure_document_type_is_active
 from app.domains.inventory import service as inventory_service
-from app.domains.inventory.models import Material
+from app.domains.inventory.service import ensure_material_is_active
 from app.domains.organizations import scope
 from app.domains.users.models import User
 from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
@@ -246,11 +246,10 @@ def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) ->
         if not recycler or recycler.user_type_code != "recycler":
             raise ApiError("recycler_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Reciclador no encontrado")
         ensure_recycler_is_active(recycler)
-    elif request.seller is not None and db.get(DocumentType, request.seller.id_type) is None:
-        raise ApiError("invalid_id_type", status_code=422, detail=f"id_type '{request.seller.id_type}' no es válido")
+    elif request.seller is not None:
+        ensure_document_type_is_active(db, request.seller.id_type)
 
-    if not db.get(Material, request.material_code):
-        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+    ensure_material_is_active(db, request.material_code)
 
     # Only in a warehouse of the actor's own ECA. The ECA receives the material whoever brings it; how the
     # seller relates to the ECA (linked, another association's, independent) is recorded, and decides

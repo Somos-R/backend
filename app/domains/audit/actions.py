@@ -65,6 +65,11 @@ class Action:
     INVENTORY_UPDATED = "inventory.updated"
     WAREHOUSE_CREATED = "warehouse.created"
     WAREHOUSE_ORGANIZATION_ASSIGNED = "warehouse.organization_assigned"
+    WAREHOUSE_UPDATED = "warehouse.updated"
+
+    # --- Catalogs (backoffice) ---
+    CATALOG_CREATED = "catalog.created"
+    CATALOG_UPDATED = "catalog.updated"
 
 
 SUCCESS = "success"
