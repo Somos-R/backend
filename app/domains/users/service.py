@@ -29,7 +29,8 @@ from app.core.permissions import (
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.auth import service as auth_service
-from app.domains.catalogs.models import DocumentType, Role
+from app.domains.catalogs.models import Role
+from app.domains.catalogs.service import is_document_type_active
 from app.domains.organizations import scope
 from app.domains.organizations.enums import OrganizationStatus
 from app.domains.organizations.models import Organization
@@ -291,7 +292,7 @@ def invite_staff(db: Session, actor: User, request: InviteStaffRequest) -> tuple
     if role is None:
         raise ApiError("invalid_role", status_code=422,
                        detail=f"role_code '{request.role_code}' no es válido o está inactivo")
-    if db.get(DocumentType, request.id_type) is None:
+    if not is_document_type_active(db, request.id_type):
         raise ApiError("invalid_id_type", status_code=422, detail=f"id_type '{request.id_type}' no es válido")
 
     user = User(

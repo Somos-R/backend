@@ -118,6 +118,8 @@ def get_own_warehouse(db: Session, actor: User, warehouse_id: uuid.UUID) -> Ware
         Warehouse.id == warehouse_id, Warehouse.id.in_(own_warehouses(actor)))).first()
     if warehouse is None:
         raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+    if not warehouse.is_active:
+        raise ApiError("warehouse_inactive", status_code=status.HTTP_400_BAD_REQUEST, detail="La bodega está desactivada")
     return warehouse
 
 

@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.core.network import enforce_admin_network
 from app.core.pagination import paginate
 from app.core.rate_limit import admin_limit, limiter
 from app.core.security import require_capability
+from app.domains.admin import catalogs_service
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory.models import Warehouse
@@ -41,6 +42,18 @@ class AdminWarehouseList(BaseModel):
 
 class AssignWarehouseOrganization(BaseModel):
     organization_id: uuid.UUID
+
+
+class UpdateWarehouseRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    address: str | None = Field(default=None, max_length=300, description="null borra la dirección")
+    is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _something_to_change(self):
+        if not self.model_fields_set:
+            raise ValueError("Indica name, address o is_active")
+        return self
 
 
 @router.get("", response_model=AdminWarehouseList)
@@ -95,3 +108,17 @@ def assign_owner(
     db.commit()
     db.refresh(warehouse)
     return warehouse
+
+
+@router.patch("/{warehouse_id}", response_model=AdminWarehouse)
+@limiter.limit(admin_limit)
+def update_warehouse(
+    request: Request,
+    warehouse_id: uuid.UUID,
+    body: UpdateWarehouseRequest,
+    db: Session = Depends(get_db),
+    actor: User = Manager,
+):
+    """Rename, change the address or (de)activate. A deactivated warehouse is refused for new weighings and
+    sales and disappears from its ECA's list; its inventory and history stay."""
+    return catalogs_service.update_warehouse(db, actor, warehouse_id, body.model_dump(exclude_unset=True))

@@ -236,6 +236,15 @@ def create_warehouse(db: Session, actor: User, body: CreateWarehouseRequest) -> 
     return warehouse
 
 
+def ensure_material_is_active(db: Session, code: str) -> None:
+    """A deactivated material (retired from the catalog) cannot be used in anything new."""
+    material = db.get(Material, code)
+    if material is None:
+        raise ApiError("material_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Material no encontrado")
+    if not material.is_active:
+        raise ApiError("material_inactive", status_code=status.HTTP_400_BAD_REQUEST, detail="El material está desactivado")
+
+
 def list_materials(db: Session) -> list[Material]:
     return list(db.scalars(select(Material).where(Material.is_active.is_(True)).order_by(Material.label)).all())
 
