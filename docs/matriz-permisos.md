@@ -32,7 +32,8 @@ Reglas generales:
 
 | Endpoint | assoc admin | assoc operativo | route mgr | eca admin | eca báscula | eca bodega | reciclador | ciudadano / conjunto / B2B |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `POST /auth/register` (sin rol) | ✅ público | | | | | | | |
+| `POST /auth/register` (ciudadano, conjunto, B2B, reciclador) | ✅ público | | | | | | | |
+| `POST /auth/register` (`eca` o `association`) | ✅ solo personal de **su** tipo | — | — | ✅ solo personal de **su** tipo | — | — | — | — |
 | `POST /auth/register` (con `role_code`) | ✅ su org. | — | — | ✅ su org. | — | — | — | — |
 | `POST /auth/login`, `/logout` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `GET /auth/me` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -133,6 +134,8 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 - **`GET /admin/audit-log`** (capacidad `audit.read`): el registro de auditoría **completo**, de todas las organizaciones y de las cuentas de Somos R, con los filtros de `GET /audit-log` más `actor_role` y `organization_id`. Cada consulta queda auditada (`admin.audit_viewed`, con los nombres de los filtros usados y no sus valores).
 
 ## Solicitud de incorporación (público)
+
+**Una ECA o una asociación no se registran solas.** `POST /auth/register` con `user_type_code` `eca` o `association` responde `403 registration_closed` salvo que quien llama sea el **administrador** (`eca_admin` o `association_admin`) **de ese mismo tipo**, que sigue pudiendo añadir personal por esa vía antigua (con contraseña; se retirará en favor de `POST /users/invitations`). Anónimos, ciudadanos, recicladores, personal sin rol de administrador y administradores del otro tipo quedan fuera. La forma de entrar es esta solicitud: al aprobarla se crea el primer administrador, y el resto del personal llega por invitación.
 
 Una Asociación o una ECA pide unirse **sin tener cuenta** (`/applications`, sin autenticación, con límite de peticiones por IP). Quien llena la solicitud se identifica con un **enlace mágico** enviado a su correo: el web lo manda en el encabezado `X-Application-Token`. Del token solo se guarda su SHA-256, un enlace nuevo invalida el anterior y vence a los 30 días (`APPLICATION_LINK_DAYS`); usarlo la primera vez **verifica el correo**.
 

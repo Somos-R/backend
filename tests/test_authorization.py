@@ -210,10 +210,9 @@ class TestRegisterWithRole:
         r = client.post("/auth/register", json=self._payload(role_code="eca_admin"))
         assert r.status_code == 403
 
-    def test_anonymous_can_still_register_without_a_role(self, client):
+    def test_anonymous_cannot_register_an_eca_account_at_all(self, client):
         r = client.post("/auth/register", json=self._payload())
-        assert r.status_code == 201
-        assert r.json()["role_code"] is None
+        assert r.status_code == 403 and r.json()["code"] == "registration_closed"
 
     def test_citizen_cannot_register_a_role(self, client_as, citizen):
         r = client_as(citizen).post("/auth/register", json=self._payload(role_code="eca_admin"))

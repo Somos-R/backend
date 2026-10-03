@@ -25,13 +25,16 @@ El campo **`user_type_code`** determina qué schema se aplica y qué campos adic
 - `association` → `association_nit`, `legal_representative`
 - `b2b_client` → `company_name`, `tax_id`
 
-**Asignación de rol al crear (`eca` y `association`):** ambos aceptan `role_code` opcional,
-pero **solo si la petición viene autenticada como administrador** (`eca_admin` o `association_admin`)
-y el rol es de su propia organización. Un registro anónimo con `role_code` responde 403; sin
-`role_code` el usuario queda sin rol (y sin permisos) hasta que un administrador se lo asigne.
-El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `422`.
+**Las ECA y las asociaciones NO se registran solas** (`403 registration_closed`): una organización pide unirse
+con `POST /applications` y Somos R la aprueba; al aprobarla se crea su primer administrador. Por este endpoint
+solo se crean `eca` y `association` cuando **quien llama es el administrador** (`eca_admin` o `association_admin`)
+**de ese mismo tipo de organización**, para añadir personal; cualquier otra petición (anónima o de otro tipo de
+cuenta) responde `403 registration_closed`.
 
-**Organización del personal (`eca` y `association`):** el personal que crea un administrador pasa a formar parte de la organización de ese administrador (`organization_id`). No se envía en la petición: no se puede elegir. Un registro anónimo queda sin organización.
+**Asignación de rol al crear personal (`eca` y `association`):** acepta `role_code` opcional, y el rol
+debe ser de su propia organización. El valor debe existir y estar activo en `GET /catalogs/roles`; si no, retorna `422`.
+
+**Organización del personal (`eca` y `association`):** el personal que crea un administrador pasa a formar parte de la organización de ese administrador (`organization_id`). No se envía en la petición: no se puede elegir.
 
 **Para dar de alta personal, usa `POST /users/invitations`** (la persona elige su propia contraseña por un enlace). Crear personal con contraseña por este endpoint queda como está por compatibilidad, pero es la vía que se retirará.
 
