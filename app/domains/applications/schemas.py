@@ -35,12 +35,23 @@ class UpdateApplicationRequest(BaseModel):
     address: str | None = Field(default=None, max_length=300)
     city: str | None = Field(default=None, max_length=100)
     applicant_name: str | None = Field(default=None, min_length=2, max_length=255)
+    applicant_id_type: str | None = Field(default=None, max_length=10, description="Tipo de documento de quien aplica")
+    applicant_id_number: str | None = Field(default=None, max_length=20, description="Documento de quien aplica")
+    applicant_phone: str | None = Field(default=None, max_length=20, description="Teléfono de quien aplica")
 
     @model_validator(mode="after")
     def _something_to_change(self):
         if not self.model_fields_set:
             raise ValueError("Indica al menos un campo")
         return self
+
+
+class ApplicationFeedback(BaseModel):
+    """What the reviewer asked to correct (only while the request has been sent back)."""
+
+    summary: str | None
+    created_at: datetime
+    submission_number: int
 
 
 class ApplicationView(BaseModel):
@@ -58,6 +69,10 @@ class ApplicationView(BaseModel):
     city: str | None
     applicant_name: str
     applicant_email: str
+    applicant_id_type: str | None
+    applicant_id_number: str | None
+    applicant_phone: str | None
+    feedback: ApplicationFeedback | None
     consent_at: datetime
     submitted_at: datetime | None
     submission_count: int

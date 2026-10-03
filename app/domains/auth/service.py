@@ -115,6 +115,10 @@ def _link(path: str, token: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/{path}?token={token}"
 
 
+def activation_link(token: str) -> str:
+    return _link('activate', token)
+
+
 def send_activation_email(to: str, full_name: str, token: str) -> None:
     send_email(
         to,

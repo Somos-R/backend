@@ -17,6 +17,7 @@ from tests import factories
 COMPLETE = {
     "legal_representative": "Rep Legal", "contact_email": "contacto@asociacion.org", "contact_phone": "3150000000",
     "address": "Calle 1 # 2-3", "city": "Bogotá", "tax_id": "900123456-7",
+    "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567",
 }
 
 
@@ -181,8 +182,9 @@ class TestViewing:
         body = client.get("/applications/current", headers=_auth(started)).json()
         assert body["status"] == "draft" and body["can_edit"] is True and body["can_submit"] is False
         assert body["submissions_left"] == settings.application_max_submissions and body["submission_count"] == 0
-        assert set(body["missing_fields"]) == {"tax_id", "legal_representative", "contact_email", "contact_phone",
-                                               "address", "city"}
+        assert set(body["missing_fields"]) == {
+            "tax_id", "legal_representative", "contact_email", "contact_phone", "address", "city",
+            "applicant_id_type", "applicant_id_number", "applicant_phone"}
 
     def test_it_exposes_nothing_internal(self, client, started):
         text = client.get("/applications/current", headers=_auth(started)).text
@@ -200,6 +202,19 @@ class TestEditing:
         assert r.status_code == 200
         body = client.get("/applications/current", headers=_auth(started)).json()
         assert body["city"] is None and body["legal_name"] == "Asociación Esperanza"
+
+    def test_null_clears_an_optional_field_including_the_email(self, client, started):
+        client.patch("/applications/current", headers=_auth(started),
+                     json={"contact_email": "contacto@org.org", "city": "Cali", "applicant_id_type": "CC"})
+        r = client.patch("/applications/current", headers=_auth(started),
+                         json={"contact_email": None, "city": None, "applicant_id_type": None})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["contact_email"] is None and body["city"] is None and body["applicant_id_type"] is None
+
+    def test_an_empty_email_is_a_validation_error_so_the_web_sends_null(self, client, started):
+        r = client.patch("/applications/current", headers=_auth(started), json={"contact_email": ""})
+        assert r.status_code == 422
 
     def test_nothing_to_change_is_422(self, client, started):
         assert client.patch("/applications/current", headers=_auth(started), json={}).status_code == 422
@@ -225,6 +240,28 @@ class TestEditing:
         client.post("/applications/current/submit", headers=_auth(started))
         r = client.patch("/applications/current", headers=_auth(started), json={"city": "Cali"})
         assert r.status_code == 409 and r.json()["code"] == "application_locked"
+
+
+class TestTheApplicantsOwnData:
+    """The person who applies becomes the first administrator, so their document and phone are collected."""
+
+    def test_they_are_edited_like_the_rest_and_audited_by_name(self, client, db, started):
+        r = client.patch("/applications/current", headers=_auth(started), json={
+            "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567"})
+        assert r.status_code == 200 and r.json()["applicant_id_number"] == "1020304050"
+        entry = db.scalars(select(AuditLog).where(AuditLog.action == "application.updated")).one()
+        assert sorted(entry.details["fields"]) == ["applicant_id_number", "applicant_id_type", "applicant_phone"]
+        assert "1020304050" not in str(entry.details)
+
+    def test_an_unknown_document_type_is_refused(self, client, started):
+        r = client.patch("/applications/current", headers=_auth(started), json={"applicant_id_type": "ZZZ"})
+        assert r.status_code == 422 and r.json()["code"] == "invalid_id_type"
+
+    def test_without_them_the_request_cannot_be_sent(self, client, started):
+        organization_only = {k: v for k, v in COMPLETE.items() if not k.startswith("applicant_")}
+        client.patch("/applications/current", headers=_auth(started), json=organization_only)
+        r = client.post("/applications/current/submit", headers=_auth(started))
+        assert r.status_code == 422 and "applicant_id_number" in r.json()["detail"]
 
 
 class TestSending:
