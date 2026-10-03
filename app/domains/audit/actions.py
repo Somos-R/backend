@@ -30,6 +30,8 @@ class Action:
     ADMIN_USER_VIEWED = "admin.user_viewed"
     ADMIN_ORGANIZATION_VIEWED = "admin.organization_viewed"
     ADMIN_APPLICATION_VIEWED = "admin.application_viewed"
+    ADMIN_DOCUMENT_VIEWED = "admin.document_viewed"
+    ADMIN_DOCUMENT_DOWNLOADED = "admin.document_downloaded"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
@@ -79,6 +81,7 @@ class Action:
     APPLICATION_REVIEW_STARTED = "application.review_started"
     APPLICATION_DOCUMENT_UPLOADED = "application.document_uploaded"
     APPLICATION_DOCUMENT_DELETED = "application.document_deleted"
+    APPLICATION_DOCUMENT_REVIEWED = "application.document_reviewed"
     APPLICATION_APPROVED = "application.approved"
     APPLICATION_CHANGES_REQUESTED = "application.changes_requested"
     APPLICATION_REJECTED = "application.rejected"

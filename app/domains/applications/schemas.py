@@ -46,12 +46,20 @@ class UpdateApplicationRequest(BaseModel):
         return self
 
 
+class FeedbackDocument(BaseModel):
+    code: str
+    label: str
+    status: str  # missing or not_compliant
+    comment: str | None
+
+
 class ApplicationFeedback(BaseModel):
     """What the reviewer asked to correct (only while the request has been sent back)."""
 
     summary: str | None
     created_at: datetime
     submission_number: int
+    documents: list[FeedbackDocument]  # the documents sent back, each with the reason
 
 
 class ApplicationView(BaseModel):

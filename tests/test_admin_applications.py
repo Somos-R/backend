@@ -67,7 +67,17 @@ def sent(client, outbox):
     return _apply(client, outbox)
 
 
-def _decide(bo, org_id, decision, summary=None):
+def _approve_documents(bo, org_id):
+    """The reviewer's verdict `ok` on every uploaded document (ignored if the request cannot be reviewed)."""
+    detail = bo.get(f"/admin/applications/{org_id}").json()
+    for slot in detail.get("documents", []):
+        if slot["document"] and slot["document"]["status"] != "ok":
+            bo.patch(f"/admin/applications/{org_id}/documents/{slot['document']['id']}", json={"status": "ok"})
+
+
+def _decide(bo, org_id, decision, summary=None, documents_ok=True):
+    if decision == "approve" and documents_ok:
+        _approve_documents(bo, org_id)
     body = {"decision": decision}
     if summary is not None:
         body["summary"] = summary
@@ -129,8 +139,10 @@ class TestTheDetail:
         bo.get(f"/admin/applications/{sent[0]}")
         (entry,) = _audit(db, "admin.application_viewed", sent[0])
         assert entry.actor_id == admin.id
-        _decide(bo, sent[0], "approve")
-        assert len(_audit(db, "admin.application_viewed", sent[0])) == 1
+        _approve_documents(bo, sent[0])  # opens the detail: one more audited view, on purpose
+        views = len(_audit(db, "admin.application_viewed", sent[0]))
+        assert _decide(bo, sent[0], "approve", documents_ok=False).status_code == 200
+        assert len(_audit(db, "admin.application_viewed", sent[0])) == views
 
     def test_an_organization_without_an_application_is_404(self, bo, db):
         org = factories.make_organization(db, "eca")

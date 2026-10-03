@@ -163,7 +163,8 @@ def latest_feedback(db: Session, organization: Organization) -> dict | None:
     ).order_by(OrganizationReview.submission_number.desc(), OrganizationReview.created_at.desc())).first()
     if review is None:
         return None
-    return {"summary": review.summary, "created_at": review.created_at, "submission_number": review.submission_number}
+    return {"summary": review.summary, "created_at": review.created_at,
+            "submission_number": review.submission_number, "documents": review.details or []}
 
 
 def view(db: Session, application: OrganizationApplication, organization: Organization) -> dict:
@@ -270,12 +271,17 @@ def send_submitted_email(to: str, applicant_name: str, organization_name: str) -
     )
 
 
-def send_changes_requested_email(to: str, applicant_name: str, organization_name: str, summary: str, token: str) -> None:
+def send_changes_requested_email(
+    to: str, applicant_name: str, organization_name: str, summary: str, token: str,
+    documents: list[dict] | None = None,
+) -> None:
+    listed = "".join(f"- {d['label']}: {d['comment'] or 'por corregir'}\n" for d in documents or [])
+    about_documents = f"Documentos por corregir:\n{listed}\n" if listed else ""
     send_email(
         to,
         "Tu solicitud en Somos R necesita correcciones",
         f"Hola {applicant_name},\n\n"
-        f"Revisamos la solicitud de {organization_name} y necesita estos cambios:\n\n{summary}\n\n"
+        f"Revisamos la solicitud de {organization_name} y necesita estos cambios:\n\n{summary}\n\n{about_documents}"
         f"Corrígela y envíala de nuevo desde este enlace (el anterior dejó de servir):\n{_link(token)}",
     )
 
