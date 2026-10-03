@@ -35,6 +35,12 @@ def _auth(token) -> dict:
     return {"X-Application-Token": token}
 
 
+def _complete(client, token):
+    """Fill in every required field and attach every required document."""
+    assert client.patch("/applications/current", headers=_auth(token), json=COMPLETE).status_code == 200
+    factories.attach_required_documents(client, token)
+
+
 @pytest.fixture
 def started(client, db, outbox):
     r = _start(client)
@@ -184,7 +190,8 @@ class TestViewing:
         assert body["submissions_left"] == settings.application_max_submissions and body["submission_count"] == 0
         assert set(body["missing_fields"]) == {
             "tax_id", "legal_representative", "contact_email", "contact_phone", "address", "city",
-            "applicant_id_type", "applicant_id_number", "applicant_phone"}
+            "applicant_id_type", "applicant_id_number", "applicant_phone",
+            "documents:assoc_rut", "documents:assoc_legal_representative_id", "documents:assoc_legal_personality"}
 
     def test_it_exposes_nothing_internal(self, client, started):
         text = client.get("/applications/current", headers=_auth(started)).text
@@ -236,7 +243,7 @@ class TestEditing:
         assert sorted(entry.details["fields"]) == ["city", "contact_phone"] and "3001112222" not in str(entry.details)
 
     def test_it_cannot_be_edited_after_sending(self, client, started):
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
         client.post("/applications/current/submit", headers=_auth(started))
         r = client.patch("/applications/current", headers=_auth(started), json={"city": "Cali"})
         assert r.status_code == 409 and r.json()["code"] == "application_locked"
@@ -272,7 +279,7 @@ class TestSending:
         assert "tax_id" in r.json()["detail"] and "city" not in r.json()["detail"]
 
     def test_a_complete_request_is_sent_and_confirmed_by_email(self, client, db, outbox, started):
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
         before = len(outbox)
         r = client.post("/applications/current/submit", headers=_auth(started))
         assert r.status_code == 200, r.text
@@ -282,14 +289,14 @@ class TestSending:
         assert db.get(Organization, _application(db).organization_id).status == OrganizationStatus.submitted
 
     def test_it_cannot_be_sent_twice(self, client, started):
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
         client.post("/applications/current/submit", headers=_auth(started))
         r = client.post("/applications/current/submit", headers=_auth(started))
         assert r.status_code == 409 and r.json()["code"] == "application_locked"
 
     def test_corrections_may_be_resent_up_to_the_limit(self, client, db, started, monkeypatch):
         monkeypatch.setattr(settings, "application_max_submissions", 2)
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
 
         def reviewer_asks_for_changes():
             db.get(Organization, _application(db).organization_id).status = OrganizationStatus.changes_requested
@@ -307,13 +314,13 @@ class TestSending:
         assert client.get("/applications/current", headers=_auth(started)).json()["can_submit"] is False
 
     def test_a_tax_id_that_became_operating_in_the_meantime_is_refused(self, client, db, started):
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
         factories.make_organization(db, "association", tax_id=COMPLETE["tax_id"])
         r = client.post("/applications/current/submit", headers=_auth(started))
         assert r.status_code == 409 and r.json()["code"] == "organization_already_registered"
 
     def test_it_is_audited(self, client, db, started):
-        client.patch("/applications/current", headers=_auth(started), json=COMPLETE)
+        _complete(client, started)
         client.post("/applications/current/submit", headers=_auth(started))
         entry = db.scalars(select(AuditLog).where(AuditLog.action == "application.submitted")).one()
         assert entry.details == {"submission": 1}

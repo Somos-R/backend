@@ -79,6 +79,20 @@ Las demás las crea otro administrador desde el backoffice.
 
 Este despliegue cambia el token de los clientes (ahora lleva `aud`): las sesiones abiertas se renuevan solas con su token de refresco, sin que las personas tengan que volver a entrar.
 
+## 4c. Documentos de las solicitudes (almacenamiento privado)
+
+Las organizaciones que piden unirse suben documentos (RUT, cédula del representante, etc.): contienen datos personales (Ley 1581 de 2012).
+
+| Variable | Valor | Para qué |
+|---|---|---|
+| `STORAGE_BACKEND` | `local` (único que existe hoy) | Dónde se guardan los archivos. **`local` escribe en el disco del contenedor y se pierde al redesplegar**: sirve para desarrollo y pruebas; antes de producción hace falta un almacenamiento que sobreviva (un bucket privado). Se avisa al arrancar |
+| `STORAGE_LOCAL_DIR` | `.storage` | Carpeta del respaldo `local` (está en `.gitignore`) |
+| `DOCUMENT_MAX_BYTES` | `5242880` (5 MB) | Tamaño máximo por archivo. Solo se aceptan PDF, PNG y JPG, reconocidos por su contenido |
+| `DOCUMENT_URL_TTL_SECONDS` | `300` | Vigencia de los enlaces firmados de descarga (revisión de documentos) |
+| `RATE_LIMIT_APPLICATION_UPLOADS` | `20/minute` | Límite por IP al subir o quitar documentos |
+
+**El proxy delante del API debe limitar también el tamaño del cuerpo** (por ejemplo `client_max_body_size 6m` en nginx): la aplicación rechaza lo grande por el encabezado `Content-Length` y al leerlo, pero el servidor de formularios recibe el cuerpo antes. Los archivos nunca se sirven directamente: solo los lee el API. Falta el análisis antivirus y la política de retención de documentos (decisión pendiente).
+
 ## 4b. Registro de auditoría en producción
 
 La tabla `audit_log` rechaza `UPDATE` y `DELETE` con un trigger, pero el dueño de la tabla aún puede hacer `TRUNCATE` o `DROP`. En producción, **la aplicación no debe conectarse con el rol dueño**: usa un rol para las migraciones y otro, con permisos mínimos, para la app (`SELECT`/`INSERT` sobre `audit_log`, sin `TRUNCATE`, `DROP` ni `ALTER`). Define además la política de retención.

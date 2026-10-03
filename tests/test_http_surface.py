@@ -186,7 +186,8 @@ class TestDeploymentWarnings:
             app_env="prod", email_backend="resend", email_api_key="re_x",
             rate_limit_storage_uri="redis://redis:6379", allowed_hosts="api.somosr.com",
             cors_origins="https://app.somosr.com", frontend_url="https://app.somosr.com",
-            sentry_dsn="https://key@example.invalid/1", admin_allowed_cidrs="203.0.113.0/24")
+            sentry_dsn="https://key@example.invalid/1", admin_allowed_cidrs="203.0.113.0/24",
+            storage_backend="s3")  # anything but the local disk, which is lost on redeploy
         assert config.deployment_warnings() == []
 
     def test_the_app_logs_them_at_startup(self, build, caplog):

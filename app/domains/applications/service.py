@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.email import send_email
 from app.core.errors import ApiError
+from app.domains.applications import catalog
 from app.domains.applications.models import OrganizationApplication, OrganizationReview
 from app.domains.applications.schemas import (
     StartApplicationRequest,
@@ -146,9 +147,11 @@ def authenticate(db: Session, raw_token: str | None) -> tuple[OrganizationApplic
 
 # --- The applicant's own request ------------------------------------------------------------
 
-def missing_fields(application: OrganizationApplication, organization: Organization) -> list[str]:
+def missing_fields(db: Session, application: OrganizationApplication, organization: Organization) -> list[str]:
+    """Data still empty and required to send, then the required documents (`documents:<code>`) not yet attached."""
     return ([name for name in REQUIRED_TO_SUBMIT if not getattr(organization, name)]
-            + [name for name in APPLICANT_REQUIRED if not getattr(application, name)])
+            + [name for name in APPLICANT_REQUIRED if not getattr(application, name)]
+            + catalog.missing_required(db, organization))
 
 
 def latest_feedback(db: Session, organization: Organization) -> dict | None:
@@ -164,7 +167,7 @@ def latest_feedback(db: Session, organization: Organization) -> dict | None:
 
 
 def view(db: Session, application: OrganizationApplication, organization: Organization) -> dict:
-    missing = missing_fields(application, organization)
+    missing = missing_fields(db, application, organization)
     left = max(settings.application_max_submissions - application.submission_count, 0)
     can_edit = organization.status in EDITABLE
     return {
@@ -181,7 +184,7 @@ def view(db: Session, application: OrganizationApplication, organization: Organi
     }
 
 
-def _ensure_editable(organization: Organization) -> None:
+def ensure_editable(organization: Organization) -> None:
     if organization.status not in EDITABLE:
         raise ApiError("application_locked", status_code=status.HTTP_409_CONFLICT,
                        detail="La solicitud ya fue enviada: no se puede editar hasta que se pidan correcciones")
@@ -189,7 +192,7 @@ def _ensure_editable(organization: Organization) -> None:
 
 def update(db: Session, application: OrganizationApplication, organization: Organization,
            request: UpdateApplicationRequest) -> None:
-    _ensure_editable(organization)
+    ensure_editable(organization)
     fields = request.model_dump(exclude_unset=True)
     if fields.get("applicant_id_type") is not None:
         ensure_document_type_is_active(db, fields["applicant_id_type"])
@@ -217,19 +220,19 @@ def update(db: Session, application: OrganizationApplication, organization: Orga
     db.commit()
 
 
-def ensure_complete(application: OrganizationApplication, organization: Organization) -> None:
-    missing = missing_fields(application, organization)
+def ensure_complete(db: Session, application: OrganizationApplication, organization: Organization) -> None:
+    missing = missing_fields(db, application, organization)
     if missing:
         raise ApiError("application_incomplete", status_code=422,
                        detail=f"Faltan datos para enviar la solicitud: {', '.join(missing)}")
 
 
 def submit(db: Session, application: OrganizationApplication, organization: Organization) -> None:
-    _ensure_editable(organization)
+    ensure_editable(organization)
     if application.submission_count >= settings.application_max_submissions:
         raise ApiError("too_many_submissions", status_code=status.HTTP_409_CONFLICT,
                        detail="Se alcanzó el máximo de envíos de esta solicitud")
-    ensure_complete(application, organization)
+    ensure_complete(db, application, organization)
     ensure_not_operating(db, organization, organization.tax_id)
     organization.status = OrganizationStatus.submitted
     application.submitted_at = datetime.now(timezone.utc)

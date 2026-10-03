@@ -212,3 +212,6 @@ __marimo__/
 
 # Kubernetes — secret values (never commit real credentials)
 k8s/secret.yaml
+
+# Local private storage for uploaded documents (development)
+.storage/

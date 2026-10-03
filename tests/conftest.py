@@ -155,6 +155,14 @@ def outbox():
     email_module.outbox.clear()
 
 
+@pytest.fixture(autouse=True)
+def _private_storage(tmp_path, monkeypatch):
+    """Uploaded documents go to a throwaway directory: tests never write inside the repository."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "storage_local_dir", str(tmp_path / "storage"))
+
+
 @pytest.fixture
 def count_queries(db):
     """Context manager that records the SELECT/INSERT/UPDATE/DELETE statements a block executes."""

@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     rate_limit_admin_auth: str = "5/minute"  # backoffice login and second factor
     rate_limit_admin: str = "60/minute"  # the rest of /admin
     rate_limit_applications: str = "5/minute"  # public: start an application, ask for the access link again
+    rate_limit_application_uploads: str = "20/minute"  # public: attach or remove an application's documents
     # Account lockout: after this many consecutive failures the account is locked for
     # 1 minute, doubling with every further failure up to the cap.
     login_max_attempts: int = 5
@@ -104,6 +105,12 @@ class Settings(BaseSettings):
     application_link_days: int = 30  # how long the applicant's magic link works (renewed on every new link)
     application_max_submissions: int = 3  # sends allowed: the first one plus corrections after a review
     application_consent_version: str = "2026-10"  # version of the data-treatment text the web shows
+
+    # --- Private storage for uploaded documents ---
+    storage_backend: str = "local"  # only "local" exists; production needs one that survives a deploy
+    storage_local_dir: str = ".storage"  # directory for the local backend (never commit it)
+    document_max_bytes: int = 5 * 1024 * 1024  # largest document accepted (PDF, PNG or JPG)
+    document_url_ttl_seconds: int = 300  # how long a signed download link works
 
     @model_validator(mode="after")
     def check_secrets(self):
@@ -180,6 +187,8 @@ class Settings(BaseSettings):
             found.append("ADMIN_ALLOWED_CIDRS is empty: /admin is reachable from any address")
         if self.frontend_url.startswith("http://localhost"):
             found.append("FRONTEND_URL points to localhost: links in emails will not work")
+        if self.storage_backend == "local":
+            found.append("STORAGE_BACKEND=local: uploaded documents live on the container disk and are lost on redeploy")
         return found
 
 
