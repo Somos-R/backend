@@ -24,6 +24,7 @@ from app.domains.admin.organizations_router import router as admin_organizations
 from app.domains.admin.router import router as admin_router
 from app.domains.admin.users_router import router as admin_users_router
 from app.domains.admin.warehouses_router import router as admin_warehouses_router
+from app.domains.applications.router import router as applications_router
 from app.domains.audit.router import admin_router as admin_audit_router
 from app.domains.audit.router import router as audit_router
 from app.domains.auth.router import router as auth_router
@@ -38,7 +39,7 @@ from app.domains.weighings.router import router as weighings_router
 logger = logging.getLogger(__name__)
 
 CORS_METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
-CORS_HEADERS = ["Authorization", "Content-Type", "Accept"]
+CORS_HEADERS = ["Authorization", "Content-Type", "Accept", "X-Application-Token"]
 
 
 def create_app() -> FastAPI:
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(weighings_router)
     app.include_router(transactions_router)
     app.include_router(organizations_router)
+    app.include_router(applications_router)
     app.include_router(audit_router)
     app.include_router(admin_router)
     app.include_router(admin_users_router)

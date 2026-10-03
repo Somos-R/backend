@@ -66,6 +66,8 @@ DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada 
 
 **Recicladores** — cada reciclador pertenece a una asociación (`organization_id` de tipo `association`), que es la única que lo ve y lo verifica (`in_scope`); la elige al registrarse. El personal de ECA los alcanza en el directorio solo si su asociación está vinculada a su ECA; para pesar a cualquiera usa `GET /recyclers/lookup`.
 
+**Solicitudes de incorporación** — `app/domains/applications/`: el flujo público por el que una Asociación o ECA pide unirse sin cuenta. La organización nace en `draft` (`organizations`) y `organization_applications` guarda a quien aplica, el hash del enlace mágico (`X-Application-Token`) y el consentimiento; nunca se devuelve el token en una respuesta ni se confirma si un correo ya aplicó. Los endpoints públicos llevan `applications_limit`. La unicidad de (tipo, NIT) solo cuenta entre organizaciones que operan. Detalle en `docs/matriz-permisos.md`.
+
 **Vínculos ECA ↔ Asociación** — `EcaAssociationLink` (mismo dominio): la ECA solicita, el administrador de la asociación decide y cualquiera de las dos retira; solo concierne a sus dos organizaciones (404 para el resto). El vínculo activo condiciona el acceso a datos operativos (`scope.py`).
 
 **Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor.

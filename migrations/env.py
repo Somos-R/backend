@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import Base
 import app.domains.users.models  # noqa: F401 — registers models with Base
 import app.domains.organizations.models  # noqa: F401
+import app.domains.applications.models  # noqa: F401
 
 config = context.config
 

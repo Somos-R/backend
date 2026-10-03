@@ -38,6 +38,10 @@ def admin_auth_limit() -> str:
     return settings.rate_limit_admin_auth
 
 
+def applications_limit() -> str:
+    return settings.rate_limit_applications
+
+
 def admin_limit() -> str:
     return settings.rate_limit_admin
 

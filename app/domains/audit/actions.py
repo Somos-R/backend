@@ -70,6 +70,12 @@ class Action:
     WAREHOUSE_ORGANIZATION_ASSIGNED = "warehouse.organization_assigned"
     WAREHOUSE_UPDATED = "warehouse.updated"
 
+    # --- Applications to join (public onboarding) ---
+    APPLICATION_CREATED = "application.created"
+    APPLICATION_LINK_SENT = "application.link_sent"
+    APPLICATION_UPDATED = "application.updated"
+    APPLICATION_SUBMITTED = "application.submitted"
+
     # --- Catalogs (backoffice) ---
     CATALOG_CREATED = "catalog.created"
     CATALOG_UPDATED = "catalog.updated"
