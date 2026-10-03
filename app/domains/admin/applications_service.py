@@ -181,7 +181,7 @@ def decide(db: Session, actor: User, organization_id: uuid.UUID, decision: str, 
 
 def _approve(db: Session, application: OrganizationApplication, organization: Organization) -> tuple[User, str]:
     """Approve and create the first administrator: the applicant, who sets their own password by a one-use link."""
-    applications.ensure_complete(application, organization)
+    applications.ensure_complete(db, application, organization)
     applications.ensure_not_operating(db, organization, organization.tax_id)
     taken = db.scalar(select(User.id).where(
         (User.email == application.applicant_email) | (User.id_number == application.applicant_id_number)))

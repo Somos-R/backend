@@ -161,3 +161,17 @@ ACTORS: dict[str, tuple[str, str | None]] = {
 def make_actor(db: Session, kind: str, **overrides) -> User:
     user_type, role_code = ACTORS[kind]
     return make_user(db, user_type, role_code=role_code, **overrides)
+
+
+PDF = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"
+
+
+def attach_required_documents(client, token: str) -> None:
+    """Upload a small valid PDF for every required document an application is asked for."""
+    headers = {"X-Application-Token": token}
+    for slot in client.get("/applications/current/documents", headers=headers).json():
+        if slot["document_type"]["is_required"] and slot["document"] is None:
+            code = slot["document_type"]["code"]
+            r = client.put(f"/applications/current/documents/{code}", headers=headers,
+                           files={"file": (f"{code}.pdf", PDF, "application/pdf")})
+            assert r.status_code == 200, r.text

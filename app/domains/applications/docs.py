@@ -58,3 +58,38 @@ correcciones; `409 too_many_submissions`). Una solicitud ya enviada no se vuelve
 {_TOKEN}
 """,
 }
+
+
+DOCUMENTS_DOCS: dict[str, Any] = {
+    "summary": "Documentos que se piden y lo que ya subí",
+    "description": f"""
+Lista los documentos que se le piden al tipo de organización (el catálogo lo edita Somos R) y, para cada uno,
+el archivo subido (`document`) o `null`. Los obligatorios que faltan también aparecen en `missing_fields` como
+`documents:<código>`. `status` es el veredicto del revisor: `pending`, `ok`, `missing` o `not_compliant`
+(con su `review_comment`).
+{_TOKEN}
+""",
+}
+
+UPLOAD_DOCUMENT_DOCS: dict[str, Any] = {
+    "summary": "Subir (o reemplazar) un documento",
+    "description": f"""
+Sube el archivo de un documento como `multipart/form-data` en el campo **`file`**. Un archivo por documento: subir
+otro **reemplaza** el anterior y su veredicto vuelve a `pending`. Solo PDF, PNG o JPG, reconocidos por su
+contenido (no por la extensión), de hasta 5 MB. El archivo se guarda en almacenamiento privado con un nombre
+aleatorio; el nombre original es solo una etiqueta.
+
+Errores: `404 document_type_not_found` (ese documento no se pide a esta organización), `409 application_locked`
+(ya se envió), `413 file_too_large`, `415 unsupported_file_type`, `422 empty_file`. Límite de peticiones por IP.
+{_TOKEN}
+""",
+}
+
+DELETE_DOCUMENT_DOCS: dict[str, Any] = {
+    "summary": "Quitar un documento subido",
+    "description": f"""
+Borra el archivo subido para ese documento (también del almacenamiento). Solo mientras la solicitud se puede
+editar (`409 application_locked` si no). `404 document_not_found` si no había archivo.
+{_TOKEN}
+""",
+}

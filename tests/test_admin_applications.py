@@ -56,6 +56,7 @@ def _apply(client, outbox, org_type="association", name="Asociación Esperanza",
     if send:
         fields = {**COMPLETE, "tax_id": f"9{n:08d}-1", "applicant_id_number": f"10{n:08d}", **overrides}
         assert client.patch("/applications/current", headers=headers, json=fields).status_code == 200
+        factories.attach_required_documents(client, token)
         r = client.post("/applications/current/submit", headers=headers)
         assert r.status_code == 200, r.text
     return client.get("/applications/current", headers=headers).json()["id"], token

@@ -2,19 +2,23 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.domains.organizations.enums import OrganizationType
 
 
 class OrganizationApplication(Base):
@@ -74,3 +78,50 @@ class OrganizationReview(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     submission_number: Mapped[int] = mapped_column(Integer, nullable=False)  # which send of the applicant it answers
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class OrganizationDocumentType(Base):
+    """A document an organization must (or may) attach to its application. A catalog the backoffice edits:
+    the list can change without touching code. Codes are unique across both types of organization."""
+
+    __tablename__ = "organization_document_types"
+    __table_args__ = (Index("ix_organization_document_types_type", "organization_type", "is_active"),)
+
+    code: Mapped[str] = mapped_column(String(40), primary_key=True)
+    organization_type: Mapped[OrganizationType] = mapped_column(
+        Enum(OrganizationType, name="organization_type", create_type=False), nullable=False)
+    label: Mapped[str] = mapped_column(String(150), nullable=False)
+    is_required: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", default=True, nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, server_default="0", default=0, nullable=False)
+
+
+class OrganizationDocument(Base):
+    """A file an organization attached for one type of document (one per type: a new upload replaces it).
+
+    The file lives in private storage under a random `storage_key`; it is never served directly. `status` is
+    the verdict of the reviewer on it and goes back to `pending` whenever the file is replaced.
+    """
+
+    __tablename__ = "organization_documents"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "document_type_code", name="uq_organization_document_type"),
+        CheckConstraint(
+            "status IN ('pending', 'ok', 'missing', 'not_compliant')", name="ck_organization_documents_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False)
+    document_type_code: Mapped[str] = mapped_column(
+        String(40), ForeignKey("organization_document_types.code"), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), server_default="pending", default="pending", nullable=False)
+    review_comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

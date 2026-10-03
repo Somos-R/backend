@@ -9,6 +9,7 @@ from app.core.security import require_capability
 from app.domains.admin import catalogs_service as service
 from app.domains.catalogs.models import DocumentType
 from app.domains.inventory.models import Material
+from app.domains.organizations.enums import OrganizationType
 from app.domains.users.models import User
 
 # Somos R's catalogs: needs the `catalogs.manage` capability, a backoffice token and an allowed network.
@@ -97,3 +98,69 @@ def update_document_type(
 ):
     """A deactivated type is refused for new accounts and sellers; existing accounts keep theirs."""
     return service.update_entry(db, actor, DocumentType, "document_type", code, body.label, body.is_active)
+
+
+class OrganizationDocumentEntry(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    organization_type: OrganizationType
+    label: str
+    is_required: bool
+    is_active: bool
+    sort_order: int
+
+
+class CreateOrganizationDocumentRequest(BaseModel):
+    code: str = Field(max_length=40, description="Inmutable: minúsculas, números y _ (ej. `assoc_rut`)")
+    label: str = Field(min_length=1, max_length=150)
+    organization_type: OrganizationType
+    is_required: bool = True
+    sort_order: int = Field(default=0, ge=0, le=1000)
+
+
+class UpdateOrganizationDocumentRequest(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    is_required: bool | None = None
+    is_active: bool | None = None
+    sort_order: int | None = Field(default=None, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def _something_to_change(self):
+        if not self.model_fields_set:
+            raise ValueError("Indica al menos un campo")
+        return self
+
+
+@router.get("/organization-documents", response_model=list[OrganizationDocumentEntry])
+@limiter.limit(admin_limit)
+def list_organization_documents(
+    request: Request,
+    organization_type: OrganizationType | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: User = Manager,
+):
+    """Los documentos que se piden en una solicitud, por tipo de organización (activos o no)."""
+    return service.list_organization_documents(db, organization_type, is_active)
+
+
+@router.post("/organization-documents", response_model=OrganizationDocumentEntry, status_code=status.HTTP_201_CREATED)
+@limiter.limit(admin_limit)
+def create_organization_document(
+    request: Request, body: CreateOrganizationDocumentRequest, db: Session = Depends(get_db), actor: User = Manager,
+):
+    """Pedir un documento nuevo. El código y el tipo de organización no cambian después."""
+    return service.create_organization_document(
+        db, actor, body.code, body.label, body.organization_type, body.is_required, body.sort_order)
+
+
+@router.patch("/organization-documents/{code}", response_model=OrganizationDocumentEntry)
+@limiter.limit(admin_limit)
+def update_organization_document(
+    request: Request, code: str, body: UpdateOrganizationDocumentRequest, db: Session = Depends(get_db),
+    actor: User = Manager,
+):
+    """Renombrar, volver (no) obligatorio, reordenar o desactivar. Solo afecta a las solicitudes que se envíen
+    de aquí en adelante: lo ya subido se conserva."""
+    return service.update_organization_document(db, actor, code, body.model_dump(exclude_unset=True))

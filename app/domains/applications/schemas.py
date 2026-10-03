@@ -84,3 +84,28 @@ class ApplicationView(BaseModel):
 
 class ApplicationMessage(BaseModel):
     message: str
+
+
+class DocumentTypeInfo(BaseModel):
+    code: str
+    label: str
+    is_required: bool
+
+
+class UploadedDocument(BaseModel):
+    """A file the applicant attached. Never carries where it is stored."""
+
+    id: uuid.UUID
+    original_name: str
+    content_type: str
+    size_bytes: int
+    uploaded_at: datetime
+    status: str  # pending, ok, missing, not_compliant: the reviewer's verdict
+    review_comment: str | None
+
+
+class DocumentSlot(BaseModel):
+    """One document the organization is asked for and what it has uploaded for it (or null)."""
+
+    document_type: DocumentTypeInfo
+    document: UploadedDocument | None

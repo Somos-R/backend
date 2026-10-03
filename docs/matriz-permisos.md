@@ -144,6 +144,17 @@ Una Asociación o una ECA pide unirse **sin tener cuenta** (`/applications`, sin
 | Enviar | `POST /applications/current/submit` | `draft`/`changes_requested` → `submitted`. Exige los datos obligatorios y que queden envíos (el primero más 2 correcciones, `APPLICATION_MAX_SUBMISSIONS`) |
 
 Un borrador **no bloquea un NIT**: la unicidad de (tipo, NIT) solo cuenta entre organizaciones que operan (`approved`, `suspended`); si el NIT ya es de una que opera, se rechaza al editar y al enviar (`409 organization_already_registered`). Todo queda auditado sin datos personales (`application.created`, `application.link_sent`, `application.updated` con los nombres de los campos, `application.submitted`). 
+### Documentos de la solicitud
+
+Los documentos que se piden son un **catálogo editable** (`organization_document_types`, sembrado con RUT y habilitación de la SSPD para ECA; RUT, documento del representante legal y personería jurídica para asociación): se administra en `GET/POST/PATCH /admin/catalogs/organization-documents` (capacidad `catalogs.manage`; el código y el tipo de organización no cambian; desactivar o volver opcional un documento solo afecta a lo que se envíe de ahí en adelante). El solicitante los ve y sube con el enlace mágico:
+
+- `GET /applications/current/documents`: cada documento pedido con lo que ya subió (o `null`) y el veredicto del revisor (`pending`, `ok`, `missing`, `not_compliant`).
+- `PUT /applications/current/documents/{código}` (`multipart/form-data`, campo `file`): sube **un archivo por documento**; subir otro lo reemplaza y el veredicto vuelve a `pending`. Solo PDF, PNG o JPG reconocidos por su contenido (no por la extensión), de hasta 5 MB; el nombre original es solo una etiqueta (se guarda con una clave aleatoria en almacenamiento privado, nunca se sirve directo).
+- `DELETE /applications/current/documents/{código}`.
+- Solo mientras la solicitud se puede editar (`draft` o `changes_requested`; si no, `409 application_locked`). Los obligatorios que faltan aparecen en `missing_fields` como `documents:<código>` y **impiden enviar**.
+
+Auditoría: `application.document_uploaded` (tipo y tamaño, no el nombre del archivo) y `application.document_deleted`.
+
 ### Revisión (backoffice, `/admin/applications`, capacidad `organizations.review`)
 
 - `GET /admin/applications`: la cola (por defecto `submitted`, `in_review` y `changes_requested`; las **más antiguas enviadas primero**; filtros `status`, `type`, `q`). Una solicitud se identifica por el **id de su organización**.

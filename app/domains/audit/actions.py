@@ -77,6 +77,8 @@ class Action:
     APPLICATION_UPDATED = "application.updated"
     APPLICATION_SUBMITTED = "application.submitted"
     APPLICATION_REVIEW_STARTED = "application.review_started"
+    APPLICATION_DOCUMENT_UPLOADED = "application.document_uploaded"
+    APPLICATION_DOCUMENT_DELETED = "application.document_deleted"
     APPLICATION_APPROVED = "application.approved"
     APPLICATION_CHANGES_REQUESTED = "application.changes_requested"
     APPLICATION_REJECTED = "application.rejected"

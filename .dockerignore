@@ -21,3 +21,4 @@ tests/
 ruff.toml
 .claude
 .env.example
+.storage

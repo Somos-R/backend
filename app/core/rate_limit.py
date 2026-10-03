@@ -42,6 +42,10 @@ def applications_limit() -> str:
     return settings.rate_limit_applications
 
 
+def application_uploads_limit() -> str:
+    return settings.rate_limit_application_uploads
+
+
 def admin_limit() -> str:
     return settings.rate_limit_admin
 
