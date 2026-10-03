@@ -23,25 +23,30 @@ from app.domains.transactions.schemas import (
     UpdateTransactionStatusRequest,
 )
 from app.domains.users.models import User
-from app.domains.weighings.models import Weighing
 
 
-def create_purchase_from_weighing(
+def create_purchase(
     db: Session,
-    weighing: Weighing,
+    *,
+    weighing_id: uuid.UUID,
+    recycler_id: uuid.UUID | None,
+    material_code: str,
+    warehouse_id: uuid.UUID,
+    kg: Decimal,
+    price_per_kg: Decimal,
     created_by: uuid.UUID,
 ) -> Transaction:
-    """Creates a purchase Transaction linked to a validated weighing. Caller must commit."""
+    """Creates the purchase Transaction owed for a validated weighing. Caller must commit."""
     tx = Transaction(
         id=uuid.uuid4(),
         type=TransactionType.purchase,
         status=TransactionStatus.pending,
-        material_code=weighing.material_code,
-        warehouse_id=weighing.warehouse_id,
-        kg=weighing.kg,
-        price_per_kg=weighing.price_per_kg,
-        recycler_id=weighing.recycler_id,
-        weighing_id=weighing.id,
+        material_code=material_code,
+        warehouse_id=warehouse_id,
+        kg=kg,
+        price_per_kg=price_per_kg,
+        recycler_id=recycler_id,
+        weighing_id=weighing_id,
         created_by=created_by,
     )
     db.add(tx)
