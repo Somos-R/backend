@@ -140,10 +140,21 @@ Una Asociación o una ECA pide unirse **sin tener cuenta** (`/applications`, sin
 |---|---|---|
 | Empezar | `POST /applications` | Crea la organización en `draft` y envía el enlace. Exige aceptar el tratamiento de datos (se guarda la fecha y la versión). Responde siempre 202 con el mismo mensaje; si ese correo ya tenía una solicitud abierta del mismo tipo, solo recibe un enlace nuevo |
 | Recuperar el enlace | `POST /applications/access-link` | Igual de genérico: no revela quién aplicó |
-| Ver / completar | `GET` / `PATCH /applications/current` | Solo en `draft` o `changes_requested`; el tipo y el correo de quien aplica no cambian |
+| Ver / completar | `GET` / `PATCH /applications/current` | Solo en `draft` o `changes_requested`; el tipo y el correo de quien aplica no cambian. Quien aplica será el primer administrador, así que también se piden su documento (`applicant_id_type`, `applicant_id_number`) y su teléfono (`applicant_phone`). Si el revisor pidió correcciones, `feedback` trae su motivo |
 | Enviar | `POST /applications/current/submit` | `draft`/`changes_requested` → `submitted`. Exige los datos obligatorios y que queden envíos (el primero más 2 correcciones, `APPLICATION_MAX_SUBMISSIONS`) |
 
-Un borrador **no bloquea un NIT**: la unicidad de (tipo, NIT) solo cuenta entre organizaciones que operan (`approved`, `suspended`); si el NIT ya es de una que opera, se rechaza al editar y al enviar (`409 organization_already_registered`). Todo queda auditado sin datos personales (`application.created`, `application.link_sent`, `application.updated` con los nombres de los campos, `application.submitted`). La revisión, la aprobación y los documentos son los siguientes pasos.
+Un borrador **no bloquea un NIT**: la unicidad de (tipo, NIT) solo cuenta entre organizaciones que operan (`approved`, `suspended`); si el NIT ya es de una que opera, se rechaza al editar y al enviar (`409 organization_already_registered`). Todo queda auditado sin datos personales (`application.created`, `application.link_sent`, `application.updated` con los nombres de los campos, `application.submitted`). 
+### Revisión (backoffice, `/admin/applications`, capacidad `organizations.review`)
+
+- `GET /admin/applications`: la cola (por defecto `submitted`, `in_review` y `changes_requested`; las **más antiguas enviadas primero**; filtros `status`, `type`, `q`). Una solicitud se identifica por el **id de su organización**.
+- `GET /admin/applications/{id}`: la solicitud completa con los datos de quien aplica y el historial de revisiones. **Abrirla queda auditado** (`admin.application_viewed`).
+- `POST /admin/applications/{id}/start-review`: la toma (`submitted` → `in_review`, a nombre de quien la toma; `409 already_in_review` si ya la tiene otra persona de Somos R).
+- `POST /admin/applications/{id}/decision` con `approve`, `request_changes` o `reject` (se puede decidir sin tomarla antes; `409 application_not_reviewable` si no está esperando revisión). Pedir correcciones y rechazar **exigen un motivo** (mínimo 10 caracteres), que es lo que lee el solicitante:
+  - **Aprobar:** la organización pasa a `approved` y se crea su **primer administrador** (el solicitante, rol `eca_admin` o `association_admin`) sin contraseña, con un enlace de activación de un solo uso por correo. El enlace mágico de la solicitud termina. `409 applicant_account_conflict` si ese correo o documento ya es de otra cuenta; `409 organization_already_registered` si el NIT pasó a ser de una organización activa.
+  - **Pedir correcciones:** `changes_requested`, correo con el motivo y un **enlace nuevo** (el anterior deja de servir); el solicitante corrige y reenvía.
+  - **Rechazar:** `rejected`, definitivo; correo con el motivo y el enlace termina. La misma persona puede volver a aplicar con una solicitud nueva.
+
+Cada decisión se guarda en `organization_reviews` (**solo anexar**: un trigger rechaza `UPDATE` y `DELETE`) con quién, qué y a qué envío responde. La auditoría (`application.review_started`, `application.approved`, `application.changes_requested`, `application.rejected`) guarda que hubo motivo, no su texto. Los documentos adjuntos son el siguiente paso.
 
 ## Vínculos ECA ↔ Asociación
 

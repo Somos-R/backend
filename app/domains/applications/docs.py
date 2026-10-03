@@ -30,7 +30,8 @@ CURRENT_DOCS: dict[str, Any] = {
     "summary": "Ver mi solicitud",
     "description": f"""
 Devuelve la solicitud de quien trae el enlace: sus datos, el estado (`draft`, `submitted`, `in_review`,
-`changes_requested`), cuántos envíos le quedan y qué falta para poder enviarla (`missing_fields`).
+`changes_requested`), cuántos envíos le quedan y qué falta para poder enviarla (`missing_fields`). Si el revisor
+pidió correcciones, `feedback` trae su motivo (`summary`) y a qué envío responde.
 {_TOKEN}
 """,
 }
@@ -39,7 +40,9 @@ UPDATE_DOCS: dict[str, Any] = {
     "summary": "Completar o corregir mi solicitud",
     "description": f"""
 Cambia solo los campos enviados (`legal_name`, `tax_id`, `legal_representative`, `contact_email`,
-`contact_phone`, `address`, `city`, `applicant_name`); un texto vacío borra el campo (menos el nombre). Solo se
+`contact_phone`, `address`, `city`, `applicant_name`, y los de quien aplica: `applicant_id_type`,
+`applicant_id_number`, `applicant_phone`, porque será el primer administrador); un texto vacío borra el campo
+(menos los nombres). Solo se
 puede mientras la solicitud está en borrador o con correcciones pedidas: si no, `409 application_locked`.
 `409 organization_already_registered` si el NIT ya es de una organización activa.
 {_TOKEN}

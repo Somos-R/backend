@@ -29,6 +29,7 @@ class Action:
     ADMIN_AUDIT_VIEWED = "admin.audit_viewed"
     ADMIN_USER_VIEWED = "admin.user_viewed"
     ADMIN_ORGANIZATION_VIEWED = "admin.organization_viewed"
+    ADMIN_APPLICATION_VIEWED = "admin.application_viewed"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
@@ -75,6 +76,10 @@ class Action:
     APPLICATION_LINK_SENT = "application.link_sent"
     APPLICATION_UPDATED = "application.updated"
     APPLICATION_SUBMITTED = "application.submitted"
+    APPLICATION_REVIEW_STARTED = "application.review_started"
+    APPLICATION_APPROVED = "application.approved"
+    APPLICATION_CHANGES_REQUESTED = "application.changes_requested"
+    APPLICATION_REJECTED = "application.rejected"
 
     # --- Catalogs (backoffice) ---
     CATALOG_CREATED = "catalog.created"

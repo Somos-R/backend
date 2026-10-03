@@ -67,8 +67,11 @@ def request_access_link(
 
 
 @router.get("/current", response_model=ApplicationView, **CURRENT_DOCS)
-def get_current(current: tuple[OrganizationApplication, Organization] = Depends(get_application)):
-    return service.view(*current)
+def get_current(
+    db: Session = Depends(get_db),
+    current: tuple[OrganizationApplication, Organization] = Depends(get_application),
+):
+    return service.view(db, *current)
 
 
 @router.patch("/current", response_model=ApplicationView, **UPDATE_DOCS)
@@ -79,7 +82,7 @@ def update_current(
 ):
     application, organization = current
     service.update(db, application, organization, body)
-    return service.view(application, organization)
+    return service.view(db, application, organization)
 
 
 @router.post("/current/submit", response_model=ApplicationView, **SUBMIT_DOCS)
@@ -93,4 +96,4 @@ def submit_current(
     background_tasks.add_task(
         service.send_submitted_email, application.applicant_email, application.applicant_name,
         organization.legal_name)
-    return service.view(application, organization)
+    return service.view(db, application, organization)
