@@ -73,7 +73,7 @@ DDD ligero con tres dominios (`auth`, `users`, `catalogs`). El punto de entrada 
 
 **Vínculos ECA ↔ Asociación** — `EcaAssociationLink` (mismo dominio): la ECA solicita, el administrador de la asociación decide y cualquiera de las dos retira; solo concierne a sus dos organizaciones (404 para el resto). El vínculo activo condiciona el acceso a datos operativos (`scope.py`).
 
-**Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor.
+**Registro con unión discriminada** — `RegisterRequest` en `auth/schemas.py` usa discriminadores de Pydantic; cada variante valida sólo los campos de su tipo de actor. **`eca` y `association` no se autoregistran** (`403 registration_closed`, `ensure_registration_is_open` en `auth/service.py`): entran por solicitud aprobada o por invitación; solo el administrador de ese mismo tipo puede añadir personal por `POST /auth/register` (vía antigua, a retirar).
 
 **Observabilidad** — `app/core/request_context.py` es el middleware más externo: asigna un `X-Request-ID`, escribe una línea de log (`app.access`) por petición y cuenta las métricas. El identificador y la IP del cliente viven en `app/core/context.py` y se leen desde cualquier parte sin pasar `request`. Nunca registrar cuerpos, query strings, cabeceras ni contraseñas en logs ni en Sentry.
 

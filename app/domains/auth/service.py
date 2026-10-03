@@ -338,8 +338,22 @@ def _recycler_association(db: Session, actor: User | None, chosen: uuid.UUID | N
     return association.id
 
 
+def ensure_registration_is_open(user_type_code: str, actor: User | None) -> None:
+    """ECAs and Associations are not self-service: their first administrator is created when Somos R approves
+    the application, and everyone else of the organization comes by invitation. The only accounts of these
+    types that `POST /auth/register` still creates are the staff an administrator of that same organization
+    type adds (the older way, with a password; it is being retired in favor of invitations)."""
+    if user_type_code not in ("eca", "association"):
+        return
+    if actor is None or not has_role(actor, ORG_ADMINS) or actor.user_type_code != user_type_code:
+        raise ApiError(
+            "registration_closed", status_code=status.HTTP_403_FORBIDDEN,
+            detail="Las ECA y las asociaciones se incorporan por solicitud y las aprueba Somos R")
+
+
 def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, str | None]:
     """Create an account. Returns the user and the email-verification token to send (if any)."""
+    ensure_registration_is_open(data["user_type_code"], actor)
     role_code = data.get("role_code")
     if role_code is not None:
         # Roles are handed out by an organization admin, never self-assigned.

@@ -86,16 +86,20 @@ class TestStaffInheritTheirAdminsOrganization:
         r = client_as(admin).post("/auth/register", json=_staff_payload("eca"))
         assert db.get(User, r.json()["id"]).organization_id == org.id
 
-    def test_an_admin_registering_another_type_does_not_pass_its_organization_on(self, client_as, db):
+    def test_an_admin_cannot_register_staff_of_the_other_type(self, client_as, db):
         org = factories.make_organization(db, "eca")
         admin = factories.make_user(db, "eca", role_code="eca_admin", organization_id=org.id)
-        r = client_as(admin).post("/auth/register", json=_staff_payload("association"))
-        assert db.get(User, r.json()["id"]).organization_id is None
+        payload = _staff_payload("association")
+        r = client_as(admin).post("/auth/register", json=payload)
+        assert r.status_code == 403 and r.json()["code"] == "registration_closed"
+        assert db.query(User).filter(User.email == payload["email"]).count() == 0
 
-    def test_an_anonymous_registration_has_no_organization(self, client, db):
-        r = client.post("/auth/register", json=_staff_payload("eca"))
-        assert r.status_code == 201
-        assert db.get(User, r.json()["id"]).organization_id is None
+    def test_an_anonymous_registration_of_an_eca_or_an_association_is_closed(self, client, db):
+        for kind in ("eca", "association"):
+            payload = _staff_payload(kind)
+            r = client.post("/auth/register", json=payload)
+            assert r.status_code == 403 and r.json()["code"] == "registration_closed"
+            assert db.query(User).filter(User.email == payload["email"]).count() == 0
 
     def test_a_recycler_registered_by_association_staff_joins_their_association(self, client_as, db):
         org = factories.make_organization(db, "association")
@@ -117,8 +121,10 @@ class TestTheClientCannotChooseIt:
 
     def test_an_anonymous_body_cannot_set_it(self, client, db):
         org = factories.make_organization(db, "eca")
-        r = client.post("/auth/register", json=_staff_payload("eca", organization_id=str(org.id)))
-        assert db.get(User, r.json()["id"]).organization_id is None
+        payload = _staff_payload("eca", organization_id=str(org.id))
+        r = client.post("/auth/register", json=payload)
+        assert r.status_code == 403 and r.json()["code"] == "registration_closed"
+        assert db.query(User).filter(User.email == payload["email"]).count() == 0
 
     def test_a_profile_update_cannot_change_it(self, client_as, db):
         mine = factories.make_organization(db, "eca")
