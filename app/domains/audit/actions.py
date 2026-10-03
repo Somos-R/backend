@@ -28,6 +28,7 @@ class Action:
     ADMIN_MFA_RESET = "admin.mfa_reset"
     ADMIN_AUDIT_VIEWED = "admin.audit_viewed"
     ADMIN_USER_VIEWED = "admin.user_viewed"
+    ADMIN_ORGANIZATION_VIEWED = "admin.organization_viewed"
 
     # --- Users ---
     RECYCLER_VERIFIED = "recycler.verified"
