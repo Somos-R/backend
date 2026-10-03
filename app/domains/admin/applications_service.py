@@ -4,7 +4,7 @@ Deciding is one unit of work: the status, the review record, the audit entry and
 administrator's account are committed together. The emails are sent by the router afterwards.
 """
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from fastapi import status
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core import search
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.domains.admin import documents_service
 from app.domains.applications import service as applications
 from app.domains.applications.models import OrganizationApplication, OrganizationReview
 from app.domains.audit import service as audit
@@ -39,9 +40,10 @@ class Outcome:
     summary: str | None
     token: str | None = None  # a fresh link (changes requested) or the activation token (approved)
     admin: User | None = None
+    documents: list[dict] = field(default_factory=list)  # what was sent back (changes requested)
 
 
-def _load(db: Session, organization_id: uuid.UUID, lock: bool = False) -> tuple[OrganizationApplication, Organization]:
+def load(db: Session, organization_id: uuid.UUID, lock: bool = False) -> tuple[OrganizationApplication, Organization]:
     query = (select(OrganizationApplication, Organization)
              .join(Organization, Organization.id == OrganizationApplication.organization_id)
              .where(Organization.id == organization_id))
@@ -99,7 +101,7 @@ def list_applications(
 
 def get_detail(db: Session, actor: User, organization_id: uuid.UUID, audited: bool = True) -> dict:
     """The whole request with the applicant's data and the history of reviews. Opening it is audited."""
-    application, organization = _load(db, organization_id)
+    application, organization = load(db, organization_id)
     if audited:
         audit.record(db, Action.ADMIN_APPLICATION_VIEWED, actor=actor, target_type="organization",
                      target_id=organization.id)
@@ -117,15 +119,17 @@ def get_detail(db: Session, actor: User, organization_id: uuid.UUID, audited: bo
         "applicant_id_type": application.applicant_id_type, "applicant_id_number": application.applicant_id_number,
         "applicant_phone": application.applicant_phone, "email_verified_at": application.email_verified_at,
         "consent_at": application.consent_at, "consent_version": application.consent_version,
+        "documents": documents_service.slots_for_review(db, organization),
         "reviews": [{
             "id": r.id, "decision": r.decision, "summary": r.summary, "submission_number": r.submission_number,
-            "created_at": r.created_at, "reviewer": reviewers.get(r.reviewer_id)} for r in reviews],
+            "details": r.details or [], "created_at": r.created_at, "reviewer": reviewers.get(r.reviewer_id)}
+            for r in reviews],
     }
 
 
 def start_review(db: Session, actor: User, organization_id: uuid.UUID) -> dict:
     """Take a sent request: submitted -> in_review, assigned to the reviewer. Taking your own again is a no-op."""
-    application, organization = _load(db, organization_id, lock=True)
+    application, organization = load(db, organization_id, lock=True)
     if organization.status == OrganizationStatus.in_review:
         if application.reviewer_id == actor.id:
             return get_detail(db, actor, organization_id, audited=False)
@@ -145,7 +149,7 @@ def start_review(db: Session, actor: User, organization_id: uuid.UUID) -> dict:
 
 def decide(db: Session, actor: User, organization_id: uuid.UUID, decision: str, summary: str | None) -> Outcome:
     """approve | request_changes | reject. Any person of Somos R may decide a sent request."""
-    application, organization = _load(db, organization_id, lock=True)
+    application, organization = load(db, organization_id, lock=True)
     if organization.status not in REVIEWABLE:
         raise ApiError("application_not_reviewable", status_code=status.HTTP_409_CONFLICT,
                        detail="La solicitud no está esperando revisión")
@@ -154,12 +158,18 @@ def decide(db: Session, actor: User, organization_id: uuid.UUID, decision: str, 
         raise ApiError("summary_required", status_code=422, detail="Indica el motivo para el solicitante")
 
     outcome = Outcome(decision, application, organization, summary)
+    review_details: list[dict] | None = None
     if decision == "approve":
+        blocked = documents_service.required_not_approved(db, organization)
+        if blocked:
+            raise ApiError("documents_not_approved", status_code=status.HTTP_409_CONFLICT,
+                           detail=f"Faltan documentos obligatorios aprobados: {', '.join(blocked)}")
         outcome.admin, outcome.token = _approve(db, application, organization)
         recorded, action = "approved", Action.APPLICATION_APPROVED
     elif decision == "request_changes":
         organization.status = OrganizationStatus.changes_requested
         outcome.token = applications.issue_link(application)  # a fresh link comes in the email
+        outcome.documents = review_details = documents_service.snapshot_for_changes(db, organization)
         recorded, action = "changes_requested", Action.APPLICATION_CHANGES_REQUESTED
     else:
         organization.status = OrganizationStatus.rejected
@@ -169,7 +179,8 @@ def decide(db: Session, actor: User, organization_id: uuid.UUID, decision: str, 
 
     application.reviewer_id = actor.id
     db.add(OrganizationReview(organization_id=organization.id, reviewer_id=actor.id, decision=recorded,
-                              summary=summary, submission_number=application.submission_count))
+                              summary=summary, submission_number=application.submission_count,
+                              details=review_details))
     # The reason is free text and may name people: the audit keeps only that it exists.
     details: dict = {"submission": application.submission_count, "has_summary": bool(summary)}
     if outcome.admin is not None:

@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -77,6 +77,7 @@ class OrganizationReview(Base):
     decision: Mapped[str] = mapped_column(String(20), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     submission_number: Mapped[int] = mapped_column(Integer, nullable=False)  # which send of the applicant it answers
+    details: Mapped[list | None] = mapped_column(JSONB, nullable=True)  # documents sent back, with the reason
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 

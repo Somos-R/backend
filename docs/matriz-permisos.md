@@ -165,6 +165,13 @@ Auditoría: `application.document_uploaded` (tipo y tamaño, no el nombre del ar
   - **Pedir correcciones:** `changes_requested`, correo con el motivo y un **enlace nuevo** (el anterior deja de servir); el solicitante corrige y reenvía.
   - **Rechazar:** `rejected`, definitivo; correo con el motivo y el enlace termina. La misma persona puede volver a aplicar con una solicitud nueva.
 
+**Los documentos en la revisión.** `GET /admin/applications/{id}` trae `documents` (cada documento pedido con el archivo subido y su veredicto). Para verlos:
+
+- `POST /admin/applications/{id}/documents/{documentId}/access` devuelve una **URL firmada de pocos minutos** (`DOCUMENT_URL_TTL_SECONDS`) y **pedirla queda auditado** (`admin.document_viewed`: es el acto de mirar el documento). El archivo se abre en `GET /admin/documents/download/{token}`, sin encabezado `Authorization` (una pestaña del navegador no lo envía): el enlace firmado es la credencial, está atado al archivo exacto (si el solicitante lo reemplaza, deja de servir), pasa por la restricción de red de `/admin` y por el límite, y se entrega con `Content-Disposition: attachment`, `Cache-Control: no-store` y `nosniff`. Cada descarga también se audita (`admin.document_downloaded`).
+- `PATCH /admin/applications/{id}/documents/{documentId}` con `status` `ok`, `missing` o `not_compliant`; los dos últimos **exigen comentario** (es lo que lee el solicitante). Solo mientras la solicitud espera revisión; un documento de otra solicitud responde 404. `application.document_reviewed` guarda el estado y que hubo comentario, no su texto.
+- **Aprobar exige que todos los documentos obligatorios estén en `ok`** (`409 documents_not_approved`, con los códigos que faltan). Un opcional con problemas no bloquea.
+- **Pedir correcciones** guarda con la revisión (`reviews[].details`) los documentos obligatorios sin adjuntar y los marcados `missing` o `not_compliant`, con su motivo; van en el correo y el solicitante los ve en `feedback.documents` y en cada documento (`status`, `review_comment`). Al reemplazar un archivo su veredicto vuelve a `pending`; los que estaban `ok` se conservan.
+
 Cada decisión se guarda en `organization_reviews` (**solo anexar**: un trigger rechaza `UPDATE` y `DELETE`) con quién, qué y a qué envío responde. La auditoría (`application.review_started`, `application.approved`, `application.changes_requested`, `application.rejected`) guarda que hubo motivo, no su texto. Los documentos adjuntos son el siguiente paso.
 
 ## Vínculos ECA ↔ Asociación

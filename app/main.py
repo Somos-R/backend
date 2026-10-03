@@ -19,6 +19,9 @@ from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
 from app.core.structured_logging import configure_logging
 from app.domains import handlers as domain_handlers
+from app.domains.admin.applications_router import (
+    download_router as admin_documents_router,
+)
 from app.domains.admin.applications_router import router as admin_applications_router
 from app.domains.admin.catalogs_router import router as admin_catalogs_router
 from app.domains.admin.organizations_router import router as admin_organizations_router
@@ -111,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_catalogs_router)
     app.include_router(admin_organizations_router)
     app.include_router(admin_applications_router)
+    app.include_router(admin_documents_router)
     app.include_router(admin_warehouses_router)
     app.include_router(admin_audit_router)
     return app
