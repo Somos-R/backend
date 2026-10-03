@@ -36,7 +36,7 @@ debe ser de su propia organización. El valor debe existir y estar activo en `GE
 
 **Organización del personal (`eca` y `association`):** el personal que crea un administrador pasa a formar parte de la organización de ese administrador (`organization_id`). No se envía en la petición: no se puede elegir.
 
-**Para dar de alta personal, usa `POST /users/invitations`** (la persona elige su propia contraseña por un enlace). Crear personal con contraseña por este endpoint queda como está por compatibilidad, pero es la vía que se retirará.
+**Para dar de alta personal, usa `POST /users/invitations`** (la persona elige su propia contraseña por un enlace). Crear personal con contraseña por este endpoint (lo hace el administrador de la organización) se mantiene como **vía de contingencia**: no es la forma normal de dar de alta personal, pero no se retira.
 
 **Asociación del reciclador (`association_id`):** todo reciclador pertenece a una asociación, que es la que lo verifica. El personal de una asociación lo registra en la suya (no hace falta enviarlo); cualquier otro debe elegir una asociación aprobada de `GET /catalogs/associations` (`422 association_required` si falta, `422 invalid_association` si no existe o no está aprobada).
 
