@@ -33,8 +33,12 @@ class Organization(Base):
 
     __tablename__ = "organizations"
     __table_args__ = (
-        # One tax id per type of organization (an Association and an ECA may share a NIT).
-        Index("uq_organizations_type_tax_id", "type", "tax_id", unique=True, postgresql_where=text("tax_id IS NOT NULL")),
+        # One tax id per type among organizations that operate (an Association and an ECA may share a NIT).
+        # Applications in progress are not counted: anyone may start one with any tax id, so a draft must not
+        # block the real organization. Duplicates of an operating one are refused when the request is submitted.
+        Index("uq_organizations_type_tax_id", "type", "tax_id", unique=True,
+              postgresql_where=text("tax_id IS NOT NULL AND status IN ('approved', 'suspended')")),
+        Index("ix_organizations_type_tax_id", "type", "tax_id"),
         Index("ix_organizations_status", "status"),
     )
 

@@ -131,6 +131,19 @@ Las cuentas de Somos R entran por su propio conjunto de rutas, separado de la AP
 - **Catálogos (`/admin/catalogs`, `PATCH /admin/warehouses/{id}`, capacidad `catalogs.manage`):** materiales (`/materials`) y tipos de documento (`/document-types`) se listan (todos, o `?is_active=`), se crean (el `code` es inmutable: materiales en minúsculas y `_`, tipos en mayúsculas) y se renombran o desactivan con `PATCH`; una bodega se renombra, cambia de dirección o se desactiva. **Nada se borra** (inventario, pesajes y cuentas apuntan a ellos): desactivar impide el **uso nuevo** (`400 material_inactive` en pesajes y ventas, `400 warehouse_inactive`, `422 invalid_id_type` en invitaciones y vendedores nuevos) y lo oculta de las listas públicas, pero lo que ya existe sigue funcionando y legible. Auditado: `catalog.created`, `catalog.updated`, `warehouse.updated`. Los motivos de rechazo llegarán con la revisión de solicitudes (6.9).
 - **`GET /admin/audit-log`** (capacidad `audit.read`): el registro de auditoría **completo**, de todas las organizaciones y de las cuentas de Somos R, con los filtros de `GET /audit-log` más `actor_role` y `organization_id`. Cada consulta queda auditada (`admin.audit_viewed`, con los nombres de los filtros usados y no sus valores).
 
+## Solicitud de incorporación (público)
+
+Una Asociación o una ECA pide unirse **sin tener cuenta** (`/applications`, sin autenticación, con límite de peticiones por IP). Quien llena la solicitud se identifica con un **enlace mágico** enviado a su correo: el web lo manda en el encabezado `X-Application-Token`. Del token solo se guarda su SHA-256, un enlace nuevo invalida el anterior y vence a los 30 días (`APPLICATION_LINK_DAYS`); usarlo la primera vez **verifica el correo**.
+
+| Paso | Endpoint | Notas |
+|---|---|---|
+| Empezar | `POST /applications` | Crea la organización en `draft` y envía el enlace. Exige aceptar el tratamiento de datos (se guarda la fecha y la versión). Responde siempre 202 con el mismo mensaje; si ese correo ya tenía una solicitud abierta del mismo tipo, solo recibe un enlace nuevo |
+| Recuperar el enlace | `POST /applications/access-link` | Igual de genérico: no revela quién aplicó |
+| Ver / completar | `GET` / `PATCH /applications/current` | Solo en `draft` o `changes_requested`; el tipo y el correo de quien aplica no cambian |
+| Enviar | `POST /applications/current/submit` | `draft`/`changes_requested` → `submitted`. Exige los datos obligatorios y que queden envíos (el primero más 2 correcciones, `APPLICATION_MAX_SUBMISSIONS`) |
+
+Un borrador **no bloquea un NIT**: la unicidad de (tipo, NIT) solo cuenta entre organizaciones que operan (`approved`, `suspended`); si el NIT ya es de una que opera, se rechaza al editar y al enviar (`409 organization_already_registered`). Todo queda auditado sin datos personales (`application.created`, `application.link_sent`, `application.updated` con los nombres de los campos, `application.submitted`). La revisión, la aprobación y los documentos son los siguientes pasos.
+
 ## Vínculos ECA ↔ Asociación
 
 Relación de varios a varios **entre organizaciones**: una ECA puede vincularse a varias asociaciones y una asociación recibir a varias ECA. **La ECA siempre inicia** (`POST /links` con el id de una asociación aprobada, que sale del directorio) y **el administrador de la asociación decide** (`accept` / `reject`, con motivo opcional). Cualquiera de las dos partes puede retirar un vínculo activo; la ECA también puede cancelar su solicitud sin respuesta. Estados: `requested` → `active` / `rejected` → (`removed`); tras un rechazo o un retiro la ECA puede volver a solicitar (se reabre la misma fila; el historial está en la auditoría: `link.requested`, `link.accepted`, `link.rejected`, `link.removed`).

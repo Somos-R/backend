@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     rate_limit_token_flows: str = "10/minute"  # activate, verify/reset, change password
     rate_limit_admin_auth: str = "5/minute"  # backoffice login and second factor
     rate_limit_admin: str = "60/minute"  # the rest of /admin
+    rate_limit_applications: str = "5/minute"  # public: start an application, ask for the access link again
     # Account lockout: after this many consecutive failures the account is locked for
     # 1 minute, doubling with every further failure up to the cap.
     login_max_attempts: int = 5
@@ -98,6 +99,11 @@ class Settings(BaseSettings):
     activation_token_minutes: int = 60 * 48
     email_verification_token_minutes: int = 60 * 24
     password_reset_token_minutes: int = 60
+
+    # --- Applications to join (public onboarding) ---
+    application_link_days: int = 30  # how long the applicant's magic link works (renewed on every new link)
+    application_max_submissions: int = 3  # sends allowed: the first one plus corrections after a review
+    application_consent_version: str = "2026-10"  # version of the data-treatment text the web shows
 
     @model_validator(mode="after")
     def check_secrets(self):
