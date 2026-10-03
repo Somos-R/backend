@@ -20,6 +20,7 @@ from app.core.sentry import init_sentry
 from app.core.structured_logging import configure_logging
 from app.domains import handlers as domain_handlers
 from app.domains.admin.catalogs_router import router as admin_catalogs_router
+from app.domains.admin.organizations_router import router as admin_organizations_router
 from app.domains.admin.router import router as admin_router
 from app.domains.admin.users_router import router as admin_users_router
 from app.domains.admin.warehouses_router import router as admin_warehouses_router
@@ -105,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(admin_users_router)
     app.include_router(admin_catalogs_router)
+    app.include_router(admin_organizations_router)
     app.include_router(admin_warehouses_router)
     app.include_router(admin_audit_router)
     return app
