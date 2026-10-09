@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.security import create_access_token, hash_password
 from app.domains.inventory import service as inventory_service
 from app.domains.inventory.models import InventoryItem, Warehouse
+from app.domains.inventory.movements import Movement, MovementType
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 
@@ -137,7 +138,8 @@ def stock(
     price_per_kg: str = "500",
 ) -> InventoryItem:
     item = inventory_service.add_stock(
-        db, material_code, warehouse.id, Decimal(kg), Decimal(price_per_kg)
+        db, material_code, warehouse.id, Decimal(kg), Decimal(price_per_kg),
+        movement=Movement(MovementType.adjustment),
     )
     db.commit()
     return item

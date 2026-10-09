@@ -16,12 +16,16 @@ from sqlalchemy.orm import Session
 
 from app.domains.inventory import service as inventory_service
 from app.domains.inventory.models import InventoryItem, Warehouse
+from app.domains.inventory.movements import Movement, MovementType
 from app.domains.transactions.models import Transaction, TransactionType
 from app.domains.weighings.models import AffiliationStatus, Weighing
 from app.main import app
 from tests import factories
 
 RACERS = 6
+
+ADJUSTMENT = Movement(MovementType.adjustment)
+SALE = Movement(MovementType.sale)
 
 
 def race(n, fn):
@@ -187,25 +191,25 @@ def test_concurrent_first_deliveries_create_one_row_and_sum_up(real):
 
 class TestStockService:
     def test_add_stock_creates_then_accumulates(self, db, warehouse):
-        first = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"))
-        second = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("5"), Decimal("250"))
+        first = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"), movement=ADJUSTMENT)
+        second = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("5"), Decimal("250"), movement=ADJUSTMENT)
         assert first.id == second.id
         assert second.stock_kg == Decimal("15")
 
     def test_add_stock_without_a_price_keeps_the_existing_one(self, db, warehouse):
-        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"))
-        item = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("5"), None)
+        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"), movement=ADJUSTMENT)
+        item = inventory_service.add_stock(db, "glass", warehouse.id, Decimal("5"), None, movement=ADJUSTMENT)
         assert item.price_per_kg == Decimal("200") and item.stock_kg == Decimal("15")
 
     def test_selling_exactly_what_is_left_is_allowed(self, db, warehouse):
-        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"))
-        item = inventory_service.subtract_stock(db, "glass", warehouse.id, Decimal("10"))
+        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"), movement=ADJUSTMENT)
+        item = inventory_service.subtract_stock(db, "glass", warehouse.id, Decimal("10"), movement=SALE)
         assert item.stock_kg == Decimal("0")
 
     def test_selling_more_than_is_left_changes_nothing(self, db, warehouse):
-        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"))
+        inventory_service.add_stock(db, "glass", warehouse.id, Decimal("10"), Decimal("200"), movement=ADJUSTMENT)
         with pytest.raises(Exception) as error:
-            inventory_service.subtract_stock(db, "glass", warehouse.id, Decimal("10.01"))
+            inventory_service.subtract_stock(db, "glass", warehouse.id, Decimal("10.01"), movement=SALE)
         assert error.value.status_code == 400  # type: ignore[attr-defined]
         db.expire_all()
         assert db.query(InventoryItem).filter_by(material_code="glass").one().stock_kg == Decimal("10")
