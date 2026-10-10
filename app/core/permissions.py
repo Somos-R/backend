@@ -1,6 +1,6 @@
 """Role catalog and the role groups that gate each endpoint.
 
-The source of truth for *who may do what* is docs/matriz-permisos.md; this
+The source of truth for *who may do what* is docs-archivo/back/matriz-permisos.md (outside the repo); this
 module is that matrix expressed as data. Keep both in sync.
 """
 from fastapi import status
