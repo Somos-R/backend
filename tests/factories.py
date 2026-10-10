@@ -137,10 +137,16 @@ def stock(
     kg: str = "100",
     price_per_kg: str = "500",
 ) -> InventoryItem:
-    item = inventory_service.add_stock(
-        db, material_code, warehouse.id, Decimal(kg), Decimal(price_per_kg),
-        movement=Movement(MovementType.adjustment),
-    )
+    if Decimal(kg) == 0:
+        # An item with nothing in it has an empty ledger, which also adds up to zero.
+        item = InventoryItem(material_code=material_code, warehouse_id=warehouse.id, stock_kg=Decimal("0"),
+                             price_per_kg=Decimal(price_per_kg))
+        db.add(item)
+    else:
+        item = inventory_service.add_stock(
+            db, material_code, warehouse.id, Decimal(kg), Decimal(price_per_kg),
+            movement=Movement(MovementType.adjustment),
+        )
     db.commit()
     return item
 
