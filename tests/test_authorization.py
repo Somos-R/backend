@@ -1,7 +1,7 @@
 """Authorization guardrail (task 1.6): endpoint x actor matrix plus ownership rules.
 
 The expectations below are written out literally and independently of
-app/core/permissions.py on purpose: they are the spec (docs/matriz-permisos.md),
+app/core/permissions.py on purpose: they are the spec (docs-archivo/back/matriz-permisos.md, outside the repo),
 and this file must fail if the code drifts from it.
 """
 from decimal import Decimal
