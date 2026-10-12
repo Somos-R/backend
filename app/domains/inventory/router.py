@@ -1,5 +1,6 @@
 import enum
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
@@ -10,12 +11,14 @@ from app.core.permissions import ECA_ADMIN, INVENTORY_READ, INVENTORY_WRITE
 from app.core.security import require_roles
 from app.core.sorting import SortOrder
 from app.domains.inventory import service as inventory_service
+from app.domains.inventory.movements import MovementType
 from app.domains.inventory.schemas import (
     CreateWarehouseRequest,
     InventoryItemResponse,
     InventoryListResponse,
     InventoryStatsResponse,
     MaterialResponse,
+    MovementListResponse,
     UpdateInventoryItemRequest,
     WarehouseResponse,
 )
@@ -72,6 +75,27 @@ def export_inventory(
          i.updated_at.isoformat()]
         for i in items]
     return csv_response("inventory.csv", header, rows)
+
+
+@router.get("/movements", response_model=MovementListResponse)
+def list_movements(
+    material_code: str | None = Query(default=None),
+    warehouse_id: uuid.UUID | None = Query(default=None),
+    movement_type: MovementType | None = Query(default=None, description="opening, purchase, sale, sale_cancellation, adjustment o loss"),
+    date_from: datetime | None = Query(default=None, description="Desde esta fecha y hora (incluida)"),
+    date_to: datetime | None = Query(default=None, description="Hasta esta fecha y hora (excluida)"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*INVENTORY_READ)),
+):
+    """El libro de movimientos: cada entrada o salida de material, la más reciente primero, con el saldo que dejó.
+    Solo de las bodegas que el usuario puede leer (las mismas del inventario)."""
+    total, items = inventory_service.list_movements(
+        db, actor, material_code=material_code, warehouse_id=warehouse_id,
+        movement_type=movement_type.value if movement_type else None, date_from=date_from, date_to=date_to,
+        limit=limit, offset=offset)
+    return MovementListResponse(total=total, items=items)
 
 
 @router.get("/stats", response_model=InventoryStatsResponse)

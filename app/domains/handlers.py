@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core import events
 from app.domains.inventory import service as inventory_service
+from app.domains.inventory.movements import Movement, MovementType, SourceType
 from app.domains.transactions import service as transactions_service
 from app.domains.weighings.events import WeighingValidated
 
@@ -13,7 +14,8 @@ from app.domains.weighings.events import WeighingValidated
 def _add_stock(db: Session, event: WeighingValidated) -> None:
     inventory_service.add_stock(
         db=db, material_code=event.material_code, warehouse_id=event.warehouse_id,
-        kg=event.kg, price_per_kg=event.price_per_kg)
+        kg=event.kg, price_per_kg=event.price_per_kg,
+        movement=Movement(MovementType.purchase, SourceType.weighing, event.weighing_id, event.validated_by))
 
 
 def _create_purchase(db: Session, event: WeighingValidated) -> None:

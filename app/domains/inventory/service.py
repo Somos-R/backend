@@ -19,7 +19,14 @@ from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.inventory.models import InventoryItem, Material, Warehouse
+from app.domains.inventory import movements
+from app.domains.inventory.models import (
+    InventoryItem,
+    InventoryMovement,
+    Material,
+    Warehouse,
+)
+from app.domains.inventory.movements import Movement
 from app.domains.inventory.schemas import (
     CreateWarehouseRequest,
     UpdateInventoryItemRequest,
@@ -41,12 +48,17 @@ def add_stock(
     warehouse_id: uuid.UUID,
     kg: Decimal,
     price_per_kg: Decimal | None,
+    *,
+    movement: Movement,
 ) -> InventoryItem:
     """Add `kg` to (material, warehouse), creating the row if needed, in one upsert.
 
     `price_per_kg=None` leaves the stored price untouched (used when returning stock,
-    which must not reprice what is already there).
+    which must not reprice what is already there). `movement` says why: the change is written
+    to the ledger (`inventory_movements`) in the same transaction, with the balance it left.
     """
+    if kg <= 0:
+        raise ValueError("add_stock needs a positive amount")
     now = datetime.now(timezone.utc)
     stock_col = InventoryItem.__table__.c.stock_kg
 
@@ -65,9 +77,11 @@ def add_stock(
             updated_at=now,
         )
         .on_conflict_do_update(constraint="uq_inventory_material_warehouse", set_=on_conflict)
-        .returning(InventoryItem.id)
+        .returning(InventoryItem.id, InventoryItem.stock_kg)
     )
-    item_id = db.execute(statement).scalar_one()
+    item_id, balance = db.execute(statement).one()
+    movements.record(db, material_code=material_code, warehouse_id=warehouse_id, kg_delta=kg,
+                     balance_after_kg=balance, price_per_kg=price_per_kg, movement=movement, occurred_at=now)
     return _reload(db, item_id)
 
 
@@ -76,8 +90,13 @@ def subtract_stock(
     material_code: str,
     warehouse_id: uuid.UUID,
     kg: Decimal,
+    *,
+    movement: Movement,
 ) -> InventoryItem:
-    """Remove `kg`, but only if enough is left at the instant of the update."""
+    """Remove `kg`, but only if enough is left at the instant of the update. Writes its ledger movement."""
+    if kg <= 0:
+        raise ValueError("subtract_stock needs a positive amount")
+    now = datetime.now(timezone.utc)
     statement = (
         update(InventoryItem)
         .where(
@@ -87,13 +106,16 @@ def subtract_stock(
         )
         .values(
             stock_kg=InventoryItem.stock_kg - kg,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
-        .returning(InventoryItem.id)
+        .returning(InventoryItem.id, InventoryItem.stock_kg)
         .execution_options(synchronize_session=False)
     )
-    item_id = db.execute(statement).scalar_one_or_none()
-    if item_id is not None:
+    updated = db.execute(statement).first()
+    if updated is not None:
+        item_id, balance = updated
+        movements.record(db, material_code=material_code, warehouse_id=warehouse_id, kg_delta=-kg,
+                         balance_after_kg=balance, price_per_kg=None, movement=movement, occurred_at=now)
         return _reload(db, item_id)
 
     # Nothing updated: tell the caller why.
@@ -194,6 +216,36 @@ def export_inventory(
                  details={"rows": len(rows)})
     db.commit()
     return list(rows)
+
+
+def list_movements(
+    db: Session,
+    actor: User,
+    *,
+    material_code: str | None,
+    warehouse_id: uuid.UUID | None,
+    movement_type: str | None,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    limit: int,
+    offset: int,
+) -> tuple[int, list[InventoryMovement]]:
+    """The ledger of what the actor may read (the same warehouses as the inventory), newest first."""
+    query = select(InventoryMovement).where(scope.inventory_scope(actor, InventoryMovement.warehouse_id))
+    if material_code:
+        query = query.where(InventoryMovement.material_code == material_code)
+    if warehouse_id:
+        query = query.where(InventoryMovement.warehouse_id == warehouse_id)
+    if movement_type:
+        query = query.where(InventoryMovement.movement_type == movement_type)
+    if date_from:
+        query = query.where(InventoryMovement.occurred_at >= date_from)
+    if date_to:
+        query = query.where(InventoryMovement.occurred_at < date_to)
+    # `seq` is unique and follows the order things happened in: it is the tie-break the pages need.
+    return paginate(
+        db, query, InventoryMovement.occurred_at.desc(), InventoryMovement.seq.desc(), limit=limit, offset=offset,
+        options=(selectinload(InventoryMovement.material), selectinload(InventoryMovement.warehouse)))
 
 
 def stats(db: Session, actor: User) -> tuple[Decimal, Decimal, dict[str, int]]:

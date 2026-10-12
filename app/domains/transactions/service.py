@@ -12,6 +12,7 @@ from app.core.pagination import paginate
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory import service as inventory_service
+from app.domains.inventory.movements import Movement, MovementType, SourceType
 from app.domains.organizations import scope
 from app.domains.transactions.models import (
     Transaction,
@@ -69,15 +70,17 @@ def create_sale(
 
     Caller must commit. Raises HTTPException if there is not enough stock.
     """
+    transaction_id = uuid.uuid4()  # the ledger movement points at the sale, so it has to exist first
     inventory_service.subtract_stock(
         db=db,
         material_code=material_code,
         warehouse_id=warehouse_id,
         kg=kg,
+        movement=Movement(MovementType.sale, SourceType.transaction, transaction_id, created_by),
     )
 
     tx = Transaction(
-        id=uuid.uuid4(),
+        id=transaction_id,
         type=TransactionType.sale,
         status=TransactionStatus.pending,
         material_code=material_code,
@@ -94,7 +97,7 @@ def create_sale(
     return tx
 
 
-def cancel_transaction(db: Session, transaction: Transaction) -> Transaction:
+def cancel_transaction(db: Session, transaction: Transaction, actor_id: uuid.UUID | None = None) -> Transaction:
     if transaction.status != TransactionStatus.pending:
         raise ApiError("invalid_transition", 
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -108,6 +111,7 @@ def cancel_transaction(db: Session, transaction: Transaction) -> Transaction:
             warehouse_id=transaction.warehouse_id,
             kg=transaction.kg,
             price_per_kg=None,  # returning stock must not reprice the existing inventory
+            movement=Movement(MovementType.sale_cancellation, SourceType.transaction, transaction.id, actor_id),
         )
     transaction.status = TransactionStatus.cancelled
     return transaction
@@ -282,7 +286,7 @@ def update_status(db: Session, actor: User, transaction_id: uuid.UUID, request: 
     previous = tx.status.value
 
     if request.status == TransactionStatus.cancelled:
-        cancel_transaction(db, tx)
+        cancel_transaction(db, tx, actor.id)
     elif request.status == TransactionStatus.delivered:
         mark_delivered(db, tx)
     elif request.status == TransactionStatus.paid:

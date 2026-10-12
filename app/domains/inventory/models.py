@@ -3,10 +3,13 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Identity,
+    Index,
     Numeric,
     String,
     Text,
@@ -87,3 +90,39 @@ class InventoryItem(Base):
     @property
     def total_value(self) -> Decimal:
         return self.stock_kg * self.price_per_kg
+
+
+class InventoryMovement(Base):
+    """One entry or exit of material in a warehouse, with the balance right after it.
+
+    The ledger of the stock: append-only (a database trigger rejects UPDATE and DELETE), so a mistake is
+    corrected with a new movement. `seq` gives the ledger a total order, because several movements of one
+    transaction share their timestamp.
+    """
+
+    __tablename__ = "inventory_movements"
+    __table_args__ = (
+        CheckConstraint(
+            "movement_type IN ('opening', 'purchase', 'sale', 'sale_cancellation', 'adjustment', 'loss')",
+            name="ck_inventory_movements_type"),
+        CheckConstraint("kg_delta <> 0", name="ck_inventory_movements_delta_not_zero"),
+        CheckConstraint("balance_after_kg >= 0", name="ck_inventory_movements_balance_non_negative"),
+        Index("ix_inventory_movements_item", "warehouse_id", "material_code", "seq"),
+        Index("ix_inventory_movements_source", "source_type", "source_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(always=True), unique=True, nullable=False)
+    material_code: Mapped[str] = mapped_column(String(30), ForeignKey("materials.code"), nullable=False)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("warehouses.id"), nullable=False)
+    movement_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    kg_delta: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    balance_after_kg: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    price_per_kg: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    source_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    material: Mapped["Material"] = relationship("Material")
+    warehouse: Mapped["Warehouse"] = relationship("Warehouse")
