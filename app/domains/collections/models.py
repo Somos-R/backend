@@ -3,7 +3,7 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography
 from sqlalchemy import (
     CheckConstraint,
     Date,
@@ -50,8 +50,9 @@ class Collection(Base):
     latitude:     Mapped[Decimal]          = mapped_column(Numeric(9, 6), nullable=False)
     longitude:    Mapped[Decimal]          = mapped_column(Numeric(9, 6), nullable=False)
     # The same point for PostGIS (the route engine works on it); always built from latitude/longitude.
+    # GiST-indexed in the migration; query it through app/core/spatial.py.
     location:     Mapped[object]           = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326, spatial_index=False), nullable=False)
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=False)
     # Codes of the `materials` catalog the requester says they have.
     materials:    Mapped[list[str]]        = mapped_column(JSONB, nullable=False)
     notes:        Mapped[str | None]       = mapped_column(Text, nullable=True)

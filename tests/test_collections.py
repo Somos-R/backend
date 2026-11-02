@@ -4,7 +4,8 @@ import uuid
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import func, select
+from geoalchemy2 import Geometry
+from sqlalchemy import cast, func, select
 
 from app.domains.collections import service as collections_service
 from app.domains.collections.models import Collection, CollectionStatus
@@ -39,8 +40,9 @@ class TestCreate:
 
     def test_the_location_is_stored_as_a_postgis_point(self, client_as, citizen, db):
         created = _create(client_as(citizen)).json()
+        as_geometry = cast(Collection.location, Geometry)
         lon, lat = db.execute(
-            select(func.ST_X(Collection.location), func.ST_Y(Collection.location))
+            select(func.ST_X(as_geometry), func.ST_Y(as_geometry))
             .where(Collection.id == uuid.UUID(created["id"]))).one()
         assert (round(lon, 6), round(lat, 6)) == (-74.065, 4.636)
         assert db.scalar(select(func.ST_SRID(Collection.location)).limit(1)) == 4326
