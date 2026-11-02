@@ -427,6 +427,27 @@ class TestBusinessEvents:
         assert entry.details["changes"] == {"price_per_kg": ["500.00", "750"], "stock_min_kg": ["50.00", "20"]}
         assert entry.details["material"] == "plastic"
 
+    def test_collection_request_lifecycle(self, client_as, citizen, db):
+        c = client_as(citizen)
+        created = c.post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"],
+            "notes": "Apartamento 301"}).json()
+        requested = only(db, Action.COLLECTION_REQUESTED)
+        assert requested.actor_id == citizen.id and requested.target_id == created["id"]
+        assert requested.details == {"materials": ["paper"]}  # never the address nor the notes
+
+        c.patch(f"/collections/{created['id']}/cancel", json={"reason": "Ya no lo necesito"})
+        cancelled = only(db, Action.COLLECTION_CANCELLED)
+        assert cancelled.target_id == created["id"] and cancelled.details == {"with_reason": True}
+
+    def test_a_refused_collection_cancel_records_nothing(self, client_as, citizen, db):
+        c = client_as(citizen)
+        created = c.post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        c.patch(f"/collections/{created['id']}/cancel")
+        assert c.patch(f"/collections/{created['id']}/cancel").status_code == 409
+        assert len(rows(db, Action.COLLECTION_CANCELLED)) == 1
+
     def test_an_inventory_patch_that_changes_nothing_records_nothing(self, client_as, eca_admin, warehouse, db):
         item = factories.stock(db, warehouse)
         client_as(eca_admin).patch(f"/inventory/{item.id}", json={})

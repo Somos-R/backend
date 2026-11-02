@@ -66,6 +66,10 @@ class Action:
     TRANSACTION_PAID = "transaction.paid"
     TRANSACTIONS_EXPORTED = "transaction.exported"
 
+    # --- Collection requests ---
+    COLLECTION_REQUESTED = "collection.requested"
+    COLLECTION_CANCELLED = "collection.cancelled"
+
     # --- Inventory ---
     INVENTORY_UPDATED = "inventory.updated"
     INVENTORY_EXPORTED = "inventory.exported"
