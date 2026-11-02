@@ -33,3 +33,16 @@ cambió, `false` si algún dato fue alterado y `null` si el pesaje es anterior a
 leer el pesaje; a los demás les responde `404 weighing_not_found`.
 """,
 }
+
+LIST_ALL_WEIGHINGS_DOCS: dict[str, Any] = {
+    "summary": "Todos los pesajes que el usuario puede ver, sin paginar",
+    "description": """
+Devuelve de una vez los pesajes que el usuario puede leer, del más reciente al más antiguo, para los clientes que
+filtran, buscan y paginan en el navegador. No recibe filtros ni paginación: son los mismos pesajes (y el mismo alcance)
+que se obtienen recorriendo `GET /weighings` sin filtros.
+
+Tiene un tope de seguridad (10.000 pesajes por defecto). Si hay más, `items` trae solo los más recientes,
+`truncated` es `true` y `total` sigue siendo el conteo real; en ese caso el cliente debe avisar y volver a la
+paginación del servidor.
+""",
+}

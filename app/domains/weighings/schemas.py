@@ -42,6 +42,12 @@ class WeighingResponse(BaseModel):
     warehouse:        WarehouseResponse
 
 
+class WeighingFullListResponse(BaseModel):
+    total: int  # the real count of what the user may read
+    truncated: bool  # true when `total` is more than the cap and only the newest rows are in `items`
+    items: list[WeighingResponse]
+
+
 class WeighingVerificationResponse(BaseModel):
     id: uuid.UUID
     algorithm: str

@@ -114,6 +114,18 @@ class TestNoNPlusOne:
         assert many == few, f"{few} queries for 3 rows but {many} for 20"
         assert many <= 7
 
+    def test_weighing_full_list(self, client_as, eca_admin, db, count_queries):
+        c = client_as(eca_admin)
+        _varied_weighings(db, 3)
+        few, _ = _queries_for(c, "/weighings/all", db, count_queries)
+
+        _varied_weighings(db, 27)
+        many, body = _queries_for(c, "/weighings/all", db, count_queries)
+
+        assert body["total"] == 30 and len(body["items"]) == 30 and body["truncated"] is False
+        assert many == few, f"{few} queries for 3 rows but {many} for 30"
+        assert many <= 7
+
     def test_transaction_list(self, client_as, eca_admin, db, count_queries):
         c = client_as(eca_admin)
         admin_id = eca_admin.id  # read now: the session is emptied before each measurement

@@ -184,6 +184,18 @@ def list_weighings(
     return paginate(db, query, *_ordering(sort, descending), limit=limit, offset=offset, options=_RELATIONS)
 
 
+def list_all_weighings(db: Session, actor: User, *, max_rows: int) -> tuple[int, list[Weighing]]:
+    """Everything the actor may read, newest first, up to `max_rows`; the total is the real count.
+
+    For clients that filter and page in the browser. It is the same query as the paginated list with no filters and a
+    page as big as the cap, so the rows (and the scope) are exactly those of paging through `GET /weighings`.
+    """
+    query = _visible_weighings(
+        actor, recycler_id=None, material_code=None, warehouse_id=None, status_=None, affiliation=None, q=None,
+        date_from=None, date_to=None)
+    return paginate(db, query, *_ordering("occurred_at", True), limit=max_rows, offset=0, options=_RELATIONS)
+
+
 def export_weighings(
     db: Session,
     actor: User,

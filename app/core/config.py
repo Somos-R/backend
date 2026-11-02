@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     application_max_submissions: int = 3  # sends allowed: the first one plus corrections after a review
     application_consent_version: str = "2026-10"  # version of the data-treatment text the web shows
 
+    # --- Lists that are not paginated ---
+    weighings_full_list_max_rows: int = 10_000  # the most GET /weighings/all returns (the newest ones); `truncated` says so
+
     # --- Private storage for uploaded documents ---
     storage_backend: str = "local"  # only "local" exists; production needs one that survives a deploy
     storage_local_dir: str = ".storage"  # directory for the local backend (never commit it)
