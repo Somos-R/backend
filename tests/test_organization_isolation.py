@@ -258,3 +258,21 @@ class TestRegistrationStaysInside:
         created = client_as(world.eca_a.admin).post("/auth/register", json=payload).json()
         assert created["id"] in _ids(client_as(world.eca_a.admin).get("/users", params={"user_type_code": "eca"}))
         assert client_as(world.eca_b.admin).get(f"/users/{created['id']}").status_code == 404
+
+
+class TestCollectionRequestsStayWithTheirRequester:
+    """Pickup requests are not tied to an organization yet: no ECA or Association reaches them, and one
+    citizen never reaches another's."""
+
+    def test_no_organization_reaches_a_citizens_request(self, client_as, world, db):
+        created = client_as(world.citizen).post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        for staff in (world.eca_a.admin, world.eca_b.admin, world.assoc_x.admin, world.assoc_y.operator):
+            c = client_as(staff)
+            assert c.get("/collections").status_code == 403
+            assert c.get(f"/collections/{created['id']}").status_code == 403
+            assert c.patch(f"/collections/{created['id']}/cancel").status_code == 403
+
+        neighbour = client_as(factories.make_user(db, "citizen"))
+        assert neighbour.get(f"/collections/{created['id']}").status_code == 404
+        assert neighbour.get("/collections").json()["total"] == 0
