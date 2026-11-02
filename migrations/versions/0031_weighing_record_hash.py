@@ -4,8 +4,8 @@ A nullable column and nothing else, so no existing row changes. Weighings regist
 verify as "not hashed" instead of being backfilled: the hash is only meaningful when it was computed at the moment
 of registration.
 
-Revision ID: 0029
-Revises: 0028
+Revision ID: 0031
+Revises: 0030
 Create Date: 2026-11-02
 
 """
@@ -14,8 +14,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0029"
-down_revision: Union[str, Sequence[str], None] = "0028"
+revision: str = "0031"
+down_revision: Union[str, Sequence[str], None] = "0030"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
