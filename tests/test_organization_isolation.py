@@ -3,6 +3,7 @@
 Two ECAs (A, B) and two Associations (X, Y), each with an admin and an operator, plus people who are
 not tied to an organization yet (recyclers, a citizen).
 """
+import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -288,7 +289,7 @@ class TestIdempotencyKeysBelongToTheirAccount:
         warehouse_a, warehouse_b = db.query(Warehouse).order_by(Warehouse.name).limit(2).all()
         warehouse_a.organization_id, warehouse_b.organization_id = world.eca_a.org.id, world.eca_b.org.id
         db.commit()
-        headers = {"Idempotency-Key": "6f1c2a4e-1b7d-4c39-9a52-0d5e8f3b7c21"}
+        headers = {"Idempotency-Key": str(uuid.uuid4())}
 
         def weigh(eca, warehouse):
             return client_as(eca.admin).post("/weighings", headers=headers, json={
