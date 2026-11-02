@@ -71,8 +71,10 @@ class CreateWeighingRequest(BaseModel):
     seller:        SellerInput | None = None
     material_code: str
     warehouse_id:  uuid.UUID
-    kg:            Decimal
-    price_per_kg:     Decimal
+    # Two decimals at most, like the columns: what is stored is exactly what was sent, so the integrity hash
+    # of the weighing can never differ from the stored value because of a rounding.
+    kg:            Decimal = Field(max_digits=10, decimal_places=2)
+    price_per_kg:     Decimal = Field(max_digits=10, decimal_places=2)
 
     @field_validator("kg", "price_per_kg")
     @classmethod

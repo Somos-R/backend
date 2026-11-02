@@ -5,8 +5,9 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import update
 
+from app.domains.inventory.models import Warehouse
 from app.domains.weighings import integrity
-from app.domains.weighings.models import Weighing
+from app.domains.weighings.models import AffiliationStatus, Weighing
 from app.main import app
 from tests import factories
 
@@ -48,6 +49,23 @@ class TestTheHashIsComputedByTheServer:
         assert _verify(client_as, eca_admin, weighing_id).json()["valid"] is True
 
 
+class TestWhatIsStoredIsWhatWasSent:
+    """A third decimal would be rounded by the database but not the same way by Python: it is refused instead."""
+
+    @pytest.mark.parametrize("field, value", [("kg", "25.125"), ("price_per_kg", "400.005"), ("kg", "0.001")])
+    def test_more_than_two_decimals_are_refused(self, client_as, eca_admin, recycler, warehouse, field, value):
+        payload = {"recycler_id": str(recycler.id), "material_code": "plastic", "warehouse_id": str(warehouse.id),
+                   "kg": "25.5", "price_per_kg": "400", field: value}
+        assert client_as(eca_admin).post("/weighings", json=payload).status_code == 422
+
+    @pytest.mark.parametrize("kg, price", [("25.12", "400.05"), ("25.13", "400.5"), ("1000", "1")])
+    def test_what_is_accepted_verifies_after_a_reload(self, client_as, eca_admin, recycler, warehouse, db, kg, price):
+        weighing_id = _register(client_as, eca_admin, recycler, warehouse, kg=kg, price_per_kg=price)
+        db.expire_all()
+        assert db.get(Weighing, weighing_id).kg == Decimal(kg)
+        assert _verify(client_as, eca_admin, weighing_id).json()["valid"] is True
+
+
 class TestAnyChangeIsDetected:
     @pytest.mark.parametrize("column, value", [
         ("kg", Decimal("25.51")),
@@ -62,11 +80,19 @@ class TestAnyChangeIsDetected:
         db.commit()
         assert _verify(client_as, eca_admin, weighing_id).json()["valid"] is False
 
-    def test_moving_it_to_another_time_or_warehouse_makes_it_invalid(self, client_as, eca_admin, recycler, warehouse, db):
+    @pytest.mark.parametrize("fact", ["occurred_at", "warehouse_id", "affiliation_status", "recycler_id"])
+    def test_changing_when_where_or_who_makes_it_invalid(self, client_as, eca_admin, recycler, warehouse, db, fact):
         weighing_id = _register(client_as, eca_admin, recycler, warehouse)
         stored = db.get(Weighing, weighing_id)
-        db.execute(update(Weighing).where(Weighing.id == weighing_id).values(
-            occurred_at=stored.occurred_at.replace(year=2020)))
+        factories.own_all_warehouses(db)  # still readable by the same ECA after the change
+        other_warehouse = next(w for w in db.query(Warehouse).all() if w.id != warehouse.id)
+        changed = {
+            "occurred_at": stored.occurred_at.replace(year=2020),
+            "warehouse_id": other_warehouse.id,
+            "affiliation_status": AffiliationStatus.independent,
+            "recycler_id": factories.make_user(db, "recycler").id,
+        }[fact]
+        db.execute(update(Weighing).where(Weighing.id == weighing_id).values({fact: changed}))
         db.commit()
         assert _verify(client_as, eca_admin, weighing_id).json()["valid"] is False
 

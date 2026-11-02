@@ -22,7 +22,7 @@ from app.core.sorting import SortOrder
 from app.domains.users.models import User
 from app.domains.weighings import integrity
 from app.domains.weighings import service as weighing_service
-from app.domains.weighings.docs import CREATE_WEIGHING_DOCS
+from app.domains.weighings.docs import CREATE_WEIGHING_DOCS, VERIFY_WEIGHING_DOCS
 from app.domains.weighings.models import AffiliationStatus, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
@@ -143,15 +143,12 @@ def get_weighing(
     return weighing_service.get_weighing(db, actor, weighing_id)
 
 
-@router.get("/{weighing_id}/verify", response_model=WeighingVerificationResponse)
+@router.get("/{weighing_id}/verify", response_model=WeighingVerificationResponse, **VERIFY_WEIGHING_DOCS)
 def verify_weighing(
     weighing_id: uuid.UUID,
     db:          Session = Depends(get_db),
     actor:       User    = Depends(get_weighing_reader),
 ):
-    """Recalcula el hash SHA-256 del pesaje y lo compara con el que se guardó al registrarlo. `valid` es `true` si
-    nada cambió, `false` si algún dato fue alterado y `null` si el pesaje es anterior al hash. Lo puede consultar
-    quien puede leer el pesaje."""
     weighing, valid = weighing_service.verify_weighing(db, actor, weighing_id)
     return WeighingVerificationResponse(
         id=weighing.id, algorithm=integrity.ALGORITHM, record_hash=weighing.record_hash, valid=valid)

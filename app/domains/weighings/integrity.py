@@ -3,6 +3,10 @@
 The weighing of the ECA is the single source of value, so what was weighed must stay detectable if anyone changes it
 later. The hash is computed on the server when the weighing is registered and never comes from the client.
 
+This is a plain SHA-256, not a keyed one (HMAC): it detects accidental or partial changes, but whoever can write to
+the database and knows this format could recompute the hash. Do not present it as proof of integrity before third
+parties; moving to HMAC with a server key means a new `CANONICAL_VERSION` and is cheaper now than once hashes exist.
+
 It covers the facts of the weighing (who delivered, what, how much, where and when), not what happens to it
 afterwards: validating, rejecting or paying a weighing changes its status, never these fields. A correction is a new
 linked record, never an edit of this one.
