@@ -1,4 +1,4 @@
-"""Migration 0031: pickup request points become geography without moving, and recyclers and ECAs get an indexed
+"""Migration 0032: pickup request points become geography without moving, and recyclers and ECAs get an indexed
 point of their own. Reversible."""
 import os
 import subprocess
@@ -26,7 +26,7 @@ def _alembic(database: str, *args: str) -> subprocess.CompletedProcess:
 
 @pytest.fixture(scope="module")
 def template_db(engine):
-    name = f"{BASE_URL.database}_mig31_template"
+    name = f"{BASE_URL.database}_mig32_template"
     with _admin_engine().connect() as conn:
         conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         conn.execute(text(f'CREATE DATABASE "{name}"'))
@@ -35,7 +35,7 @@ def template_db(engine):
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
         conn.execute(text('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"'))
     eng.dispose()
-    done = _alembic(name, "upgrade", "0030")
+    done = _alembic(name, "upgrade", "0031")
     assert done.returncode == 0, done.stderr
     yield name
     with _admin_engine().connect() as conn:
@@ -44,7 +44,7 @@ def template_db(engine):
 
 @pytest.fixture
 def old_db(template_db):
-    name = f"{BASE_URL.database}_m31_{uuid.uuid4().hex[:8]}"
+    name = f"{BASE_URL.database}_m32_{uuid.uuid4().hex[:8]}"
     with _admin_engine().connect() as conn:
         conn.execute(text(f'CREATE DATABASE "{name}" TEMPLATE "{template_db}"'))
     eng = create_engine(BASE_URL.set(database=name))
@@ -59,7 +59,7 @@ def _pickup_request(eng) -> uuid.UUID:
     with eng.begin() as conn:
         conn.execute(text(
             "INSERT INTO users (id, email, password_hash, full_name, id_type, id_number, user_type_code) "
-            "VALUES (:i, 'mig31@test.com', 'x', 'Migración', 'CC', '31003100', 'citizen')"), {"i": user_id})
+            "VALUES (:i, 'mig32@test.com', 'x', 'Migración', 'CC', '32003200', 'citizen')"), {"i": user_id})
         conn.execute(text(
             "INSERT INTO collections (id, requester_id, status, address, latitude, longitude, location, materials) "
             "VALUES (:i, :u, 'pending_assignment', 'Usme', 4.4766, -74.1262, "
@@ -94,7 +94,7 @@ def test_downgrade_restores_geometry_and_the_migration_can_be_reapplied(old_db):
     name, eng = old_db
     collection_id = _pickup_request(eng)
     assert _alembic(name, "upgrade", "head").returncode == 0
-    done = _alembic(name, "downgrade", "0030")
+    done = _alembic(name, "downgrade", "0031")
     assert done.returncode == 0, done.stderr
     assert _location(eng, collection_id) == pytest.approx(("geometry", -74.1262, 4.4766))
     assert "start_location" not in _columns(eng, "users") and "location" not in _columns(eng, "organizations")
