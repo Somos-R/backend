@@ -17,6 +17,7 @@ from app.domains.catalogs.service import ensure_document_type_is_active
 from app.domains.inventory.service import ensure_material_is_active
 from app.domains.organizations import scope
 from app.domains.users.models import User
+from app.domains.weighings import integrity
 from app.domains.weighings.events import WeighingValidated
 from app.domains.weighings.models import AffiliationStatus, Weighing, WeighingStatus
 from app.domains.weighings.schemas import (
@@ -260,6 +261,7 @@ def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) ->
 
     weighing = Weighing(
         id=uuid.uuid4(),
+        occurred_at=datetime.now(timezone.utc),  # set here, not by the database, so the hash covers the stored value
         recycler_id=request.recycler_id,
         seller_name=seller.full_name.strip() if seller else None,
         seller_id_type=seller.id_type if seller else None,
@@ -270,6 +272,7 @@ def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) ->
         kg=request.kg,
         price_per_kg=request.price_per_kg,
     )
+    weighing.record_hash = integrity.compute_hash(weighing)
     db.add(weighing)
     audit.record(
         db, Action.WEIGHING_CREATED, actor=actor, target_type="weighing", target_id=weighing.id,
@@ -293,6 +296,12 @@ def get_weighing(db: Session, actor: User, weighing_id: uuid.UUID) -> Weighing:
     if not weighing or outside:
         raise ApiError("weighing_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Pesaje no encontrado")
     return weighing
+
+
+def verify_weighing(db: Session, actor: User, weighing_id: uuid.UUID) -> tuple[Weighing, bool | None]:
+    """The weighing (if the actor may read it) and whether it still matches the hash it was registered with."""
+    weighing = get_weighing(db, actor, weighing_id)
+    return weighing, integrity.matches(weighing)
 
 
 def update_status(db: Session, actor: User, weighing_id: uuid.UUID, request: UpdateWeighingStatusRequest) -> Weighing:

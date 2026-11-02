@@ -300,3 +300,45 @@ class TestIdempotencyKeysBelongToTheirAccount:
         assert from_a.status_code == from_b.status_code == 201, from_b.text
         assert from_a.json()["id"] != from_b.json()["id"]
         assert client_as(world.eca_b.admin).get(f"/weighings/{from_a.json()['id']}").status_code == 404
+
+
+class TestWeighingVerificationScope:
+    """`GET /weighings/{id}/verify` is read by whoever may read the weighing, and nobody else."""
+
+    @pytest.fixture
+    def weighing_id(self, client_as, db, world):
+        from app.domains.inventory.models import Warehouse
+
+        warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+        warehouse.organization_id = world.eca_a.org.id
+        db.commit()
+        r = client_as(world.eca_a.admin).post("/weighings", json={
+            "recycler_id": str(world.recycler.id), "material_code": "plastic", "warehouse_id": str(warehouse.id),
+            "kg": "10", "price_per_kg": "400"})
+        assert r.status_code == 201, r.text
+        return r.json()["id"]
+
+    def test_the_owning_eca_verifies_it(self, client_as, world, weighing_id):
+        assert client_as(world.eca_a.admin).get(f"/weighings/{weighing_id}/verify").json()["valid"] is True
+
+    def test_another_eca_gets_the_answer_of_a_missing_weighing(self, client_as, world, weighing_id):
+        other = client_as(world.eca_b.admin).get(f"/weighings/{weighing_id}/verify")
+        missing = client_as(world.eca_b.admin).get(f"/weighings/{MISSING}/verify")
+        assert other.status_code == 404 and other.json() == missing.json()
+        assert other.json()["code"] == "weighing_not_found"
+
+    def test_an_association_that_is_not_linked_does_not_see_it(self, client_as, world, weighing_id):
+        r = client_as(world.assoc_y.admin).get(f"/weighings/{weighing_id}/verify")
+        assert r.status_code == 404 and r.json()["code"] == "weighing_not_found"
+
+    def test_the_linked_association_reaches_it_only_when_it_was_delivered_through_the_link(
+        self, client_as, db, world, weighing_id,
+    ):
+        from app.domains.weighings.models import AffiliationStatus, Weighing
+
+        weighing = db.get(Weighing, weighing_id)
+        r = client_as(world.assoc_x.admin).get(f"/weighings/{weighing_id}/verify")
+        assert (r.status_code == 200) == (weighing.affiliation_status == AffiliationStatus.linked)
+        weighing.affiliation_status = AffiliationStatus.unlinked_association
+        db.commit()
+        assert client_as(world.assoc_x.admin).get(f"/weighings/{weighing_id}/verify").status_code == 404
