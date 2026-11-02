@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csv_export import csv_response
 from app.core.database import get_db
+from app.core.idempotency import IdempotencyKeyHeader, create_once
 from app.core.permissions import (
     PAYMENTS,
     WEIGHINGS_CREATE,
@@ -20,6 +21,7 @@ from app.core.security import get_current_user, require_roles
 from app.core.sorting import SortOrder
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
+from app.domains.weighings.docs import CREATE_WEIGHING_DOCS
 from app.domains.weighings.models import AffiliationStatus, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
@@ -123,13 +125,17 @@ def weighing_stats(
     )
 
 
-@router.post("", response_model=WeighingResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=WeighingResponse, status_code=status.HTTP_201_CREATED, **CREATE_WEIGHING_DOCS)
 def create_weighing(
-    request: CreateWeighingRequest,
-    db:      Session = Depends(get_db),
-    actor:   User    = Depends(require_roles(*WEIGHINGS_CREATE)),
+    request:         CreateWeighingRequest,
+    idempotency_key: IdempotencyKeyHeader = None,
+    db:              Session = Depends(get_db),
+    actor:           User    = Depends(require_roles(*WEIGHINGS_CREATE)),
 ):
-    return weighing_service.create_weighing(db, actor, request)
+    return create_once(
+        db, user_id=actor.id, key=idempotency_key, operation="weighings.create", request=request,
+        response_model=WeighingResponse, status_code=status.HTTP_201_CREATED,
+        create=lambda: weighing_service.create_weighing(db, actor, request))
 
 
 @router.get("/{weighing_id}", response_model=WeighingResponse)
