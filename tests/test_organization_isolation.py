@@ -276,3 +276,26 @@ class TestCollectionRequestsStayWithTheirRequester:
         neighbour = client_as(factories.make_user(db, "citizen"))
         assert neighbour.get(f"/collections/{created['id']}").status_code == 404
         assert neighbour.get("/collections").json()["total"] == 0
+
+
+class TestIdempotencyKeysBelongToTheirAccount:
+    """A stored response is replayed only to the account that created it: another ECA reusing the same
+    `Idempotency-Key` gets its own record, never the other ECA's weighing."""
+
+    def test_two_ecas_with_the_same_key_each_create_their_own_weighing(self, client_as, world, db):
+        from app.domains.inventory.models import Warehouse
+
+        warehouse_a, warehouse_b = db.query(Warehouse).order_by(Warehouse.name).limit(2).all()
+        warehouse_a.organization_id, warehouse_b.organization_id = world.eca_a.org.id, world.eca_b.org.id
+        db.commit()
+        headers = {"Idempotency-Key": "6f1c2a4e-1b7d-4c39-9a52-0d5e8f3b7c21"}
+
+        def weigh(eca, warehouse):
+            return client_as(eca.admin).post("/weighings", headers=headers, json={
+                "seller": {"full_name": "Persona Sin Registro", "id_type": "CC", "id_number": "5550001"},
+                "material_code": "plastic", "warehouse_id": str(warehouse.id), "kg": "5", "price_per_kg": "300"})
+
+        from_a, from_b = weigh(world.eca_a, warehouse_a), weigh(world.eca_b, warehouse_b)
+        assert from_a.status_code == from_b.status_code == 201, from_b.text
+        assert from_a.json()["id"] != from_b.json()["id"]
+        assert client_as(world.eca_b.admin).get(f"/weighings/{from_a.json()['id']}").status_code == 404
