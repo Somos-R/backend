@@ -1,14 +1,15 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.core.periods import Period
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory import service as inventory_service
@@ -219,12 +220,14 @@ def export_transactions(
     return list(rows)
 
 
-def month_stats(db: Session, actor: User) -> tuple[dict[TransactionType, tuple[int, Decimal, Decimal]], int]:
-    """(count, kg, value) per type this month and the pending count, all in SQL."""
-    now = datetime.now(timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-    this_month = Transaction.occurred_at >= start
+def period_stats(
+    db: Session, actor: User, *, period: Period, material_code: str | None = None,
+) -> tuple[dict[TransactionType, tuple[int, Decimal, Decimal]], int]:
+    """(count, kg, value) per type in the period and the pending count, all in SQL. `material_code` narrows both."""
+    in_period = and_(Transaction.occurred_at >= period.start,
+                     Transaction.occurred_at <= period.end if period.end else true())
+    if material_code:
+        in_period = and_(in_period, Transaction.material_code == material_code)
     mine = scope.transaction_scope(actor)
 
     per_type = {
@@ -235,11 +238,11 @@ def month_stats(db: Session, actor: User) -> tuple[dict[TransactionType, tuple[i
                 func.count(Transaction.id),
                 func.coalesce(func.sum(Transaction.kg), 0),
                 func.coalesce(func.sum(Transaction.kg * Transaction.price_per_kg), 0),
-            ).where(this_month, mine).group_by(Transaction.type)
+            ).where(in_period, mine).group_by(Transaction.type)
         ).all()
     }
     pending = db.scalar(
-        select(func.count(Transaction.id)).where(this_month, mine, Transaction.status == TransactionStatus.pending)
+        select(func.count(Transaction.id)).where(in_period, mine, Transaction.status == TransactionStatus.pending)
     ) or 0
     return per_type, pending
 

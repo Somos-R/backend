@@ -302,6 +302,40 @@ class TestIdempotencyKeysBelongToTheirAccount:
         assert client_as(world.eca_b.admin).get(f"/weighings/{from_a.json()['id']}").status_code == 404
 
 
+class TestStatsStayInScopeWithFilters:
+    """The period and material filters rewrite the WHERE of three aggregates: the scope must survive them."""
+
+    FILTERS = {"date_from": "2020-01-01T00:00:00Z", "date_to": "2999-01-01T00:00:00Z", "material_code": "plastic"}
+
+    @pytest.fixture
+    def data(self, client_as, db, world):
+        from app.domains.inventory.models import Warehouse
+
+        warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+        warehouse.organization_id = world.eca_a.org.id
+        db.commit()
+        c = client_as(world.eca_a.admin)
+        weighing_id = c.post("/weighings", json={
+            "recycler_id": str(world.recycler.id), "material_code": "plastic", "warehouse_id": str(warehouse.id),
+            "kg": "10", "price_per_kg": "400"}).json()["id"]
+        assert c.patch(f"/weighings/{weighing_id}/status", json={"status": "validated"}).status_code == 200
+
+    def test_the_owning_eca_sees_its_figures(self, client_as, world, data):
+        c = client_as(world.eca_a.admin)
+        assert c.get("/weighings/stats", params=self.FILTERS).json()["total_weighings_month"] == 1
+        assert c.get("/transactions/stats", params=self.FILTERS).json()["total_purchases_month"] == 1
+        assert float(c.get("/inventory/stats", params={"material_code": "plastic"}).json()["total_stock_kg"]) == 10
+
+    @pytest.mark.parametrize("who", ["eca_b", "assoc_y"])
+    def test_another_eca_or_an_unlinked_association_sees_zeros(self, client_as, world, data, who):
+        c = client_as(getattr(world, who).admin)
+        assert c.get("/weighings/stats", params=self.FILTERS).json()["total_weighings_month"] == 0
+        assert c.get("/weighings/stats", params=self.FILTERS).json()["by_material"] == []
+        assert c.get("/inventory/stats", params={"material_code": "plastic"}).json()["total_stock_kg"] in ("0", "0.00")
+        if who == "eca_b":  # an association never reads transactions of an ECA it is not linked to either
+            assert c.get("/transactions/stats", params=self.FILTERS).json()["total_purchases_month"] == 0
+
+
 class TestWeighingVerificationScope:
     """`GET /weighings/{id}/verify` is read by whoever may read the weighing, and nobody else."""
 

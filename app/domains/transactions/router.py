@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csv_export import csv_response
 from app.core.database import get_db
+from app.core.periods import Period, period_params
 from app.core.permissions import (
     PAYMENTS,
     TRANSACTIONS_READ,
@@ -17,6 +18,7 @@ from app.core.permissions import (
 from app.core.security import get_current_user, require_roles
 from app.core.sorting import SortOrder
 from app.domains.transactions import service as tx_service
+from app.domains.transactions.docs import TRANSACTION_STATS_DOCS
 from app.domains.transactions.models import TransactionStatus, TransactionType
 from app.domains.transactions.schemas import (
     CreateSaleRequest,
@@ -84,12 +86,14 @@ def export_transactions(
     return csv_response("transactions.csv", header, rows)
 
 
-@router.get("/stats", response_model=TransactionStatsResponse)
+@router.get("/stats", response_model=TransactionStatsResponse, **TRANSACTION_STATS_DOCS)
 def transaction_stats(
+    period: Period = Depends(period_params),
+    material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    per_type, pending = tx_service.month_stats(db, actor)
+    per_type, pending = tx_service.period_stats(db, actor, period=period, material_code=material_code)
     empty = (0, Decimal("0"), Decimal("0"))
     purchases = per_type.get(TransactionType.purchase, empty)
     sales = per_type.get(TransactionType.sale, empty)

@@ -14,6 +14,17 @@ La clave se recuerda 7 días y es propia de cada cuenta.
 """,
 }
 
+WEIGHING_STATS_DOCS: dict[str, Any] = {
+    "summary": "Cifras de los pesajes de un periodo",
+    "description": """
+Cantidad y kilos de los pesajes del periodo, kilos por material y cuántos esperan validación. Por defecto es el mes en
+curso hasta hoy; `date_from` y `date_to` (ambos incluidos, como en el listado) eligen otro periodo y `material_code`
+lo reduce a un material. Los campos `*_month` conservan su nombre aunque el periodo sea otro. Los pendientes son
+todos los que aún esperan validación, sin importar cuándo se pesaron. Si `date_to` es anterior a `date_from`
+responde `422 invalid_period`.
+""",
+}
+
 VERIFY_WEIGHING_DOCS: dict[str, Any] = {
     "summary": "Verificar la integridad de un pesaje",
     "description": """
