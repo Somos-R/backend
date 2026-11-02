@@ -24,3 +24,12 @@ todos los que aún esperan validación, sin importar cuándo se pesaron. Si `dat
 responde `422 invalid_period`.
 """,
 }
+
+VERIFY_WEIGHING_DOCS: dict[str, Any] = {
+    "summary": "Verificar la integridad de un pesaje",
+    "description": """
+Recalcula el hash SHA-256 del pesaje y lo compara con el que se guardó al registrarlo. `valid` es `true` si nada
+cambió, `false` si algún dato fue alterado y `null` si el pesaje es anterior al hash. Lo puede consultar quien puede
+leer el pesaje; a los demás les responde `404 weighing_not_found`.
+""",
+}
