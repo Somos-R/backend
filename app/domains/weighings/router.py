@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.idempotency import IdempotencyKeyHeader, create_once
@@ -25,6 +26,7 @@ from app.domains.weighings import integrity
 from app.domains.weighings import service as weighing_service
 from app.domains.weighings.docs import (
     CREATE_WEIGHING_DOCS,
+    LIST_ALL_WEIGHINGS_DOCS,
     VERIFY_WEIGHING_DOCS,
     WEIGHING_STATS_DOCS,
 )
@@ -32,6 +34,7 @@ from app.domains.weighings.models import AffiliationStatus, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
     UpdateWeighingStatusRequest,
+    WeighingFullListResponse,
     WeighingListResponse,
     WeighingResponse,
     WeighingStatsResponse,
@@ -78,6 +81,16 @@ def list_weighings(
         status_=status_, affiliation=affiliation, q=q, date_from=date_from, date_to=date_to,
         sort=sort.value, descending=order is SortOrder.desc, limit=limit, offset=offset)
     return WeighingListResponse(total=total, items=weighings)
+
+
+@router.get("/all", response_model=WeighingFullListResponse, **LIST_ALL_WEIGHINGS_DOCS)
+def list_all_weighings(
+    db:    Session = Depends(get_db),
+    actor: User    = Depends(get_weighing_reader),
+):
+    total, weighings = weighing_service.list_all_weighings(db, actor, max_rows=settings.weighings_full_list_max_rows)
+    return WeighingFullListResponse(
+        total=total, truncated=total > settings.weighings_full_list_max_rows, items=weighings)
 
 
 @router.get("/export.csv", summary="Download the weighings matching the filters as CSV")

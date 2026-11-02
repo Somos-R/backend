@@ -376,3 +376,51 @@ class TestWeighingVerificationScope:
         weighing.affiliation_status = AffiliationStatus.unlinked_association
         db.commit()
         assert client_as(world.assoc_x.admin).get(f"/weighings/{weighing_id}/verify").status_code == 404
+
+
+class TestFullWeighingListScope:
+    """`GET /weighings/all` returns everything the actor may read, and nothing of anyone else's."""
+
+    @pytest.fixture
+    def delivered(self, client_as, db, world):
+        from app.domains.inventory.models import Warehouse
+        from app.domains.weighings.models import AffiliationStatus, Weighing
+
+        warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+        warehouse.organization_id = world.eca_a.org.id
+        db.commit()
+        c = client_as(world.eca_a.admin)
+        ids = [
+            c.post("/weighings", json={
+                "recycler_id": str(world.recycler.id), "material_code": "plastic", "warehouse_id": str(warehouse.id),
+                "kg": "10", "price_per_kg": "400"}).json()["id"]
+            for _ in range(2)]
+        # One of them reached the association through the link; the other did not.
+        for weighing_id, affiliation in zip(ids, (AffiliationStatus.linked, AffiliationStatus.unlinked_association)):
+            db.get(Weighing, weighing_id).affiliation_status = affiliation
+        db.commit()
+        return SimpleNamespace(ids=ids, linked=ids[0], unlinked=ids[1])
+
+    @staticmethod
+    def _all(client_as, user):
+        r = client_as(user).get("/weighings/all")
+        assert r.status_code == 200, r.text
+        return {item["id"] for item in r.json()["items"]}, r.json()
+
+    def test_the_owning_eca_gets_all_of_them(self, client_as, world, delivered):
+        got, body = self._all(client_as, world.eca_a.admin)
+        assert got == set(delivered.ids) and body["total"] == 2 and body["truncated"] is False
+
+    def test_another_eca_and_an_unlinked_association_get_an_empty_list(self, client_as, world, delivered):
+        for user in (world.eca_b.admin, world.assoc_y.admin):
+            got, body = self._all(client_as, user)
+            assert got == set() and body["total"] == 0
+
+    def test_the_linked_association_gets_only_what_arrived_through_the_link(self, client_as, world, delivered):
+        got, body = self._all(client_as, world.assoc_x.admin)
+        assert got == {delivered.linked} and body["total"] == 1
+
+    def test_a_recycler_gets_only_their_own(self, client_as, world, delivered, db):
+        other_recycler = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
+        assert self._all(client_as, other_recycler)[0] == set()
+        assert self._all(client_as, world.recycler)[0] == set(delivered.ids)
