@@ -292,18 +292,28 @@ class TestIndexes:
             "AND indexname = 'idx_users_coverage_area'")).scalar()
         assert index and "gist" in index.lower()
 
-    @pytest.mark.parametrize("query,index", [
-        ("SELECT * FROM weighings WHERE recycler_id = '00000000-0000-0000-0000-000000000000' "
+    @pytest.mark.parametrize("table,query,index", [
+        ("weighings", "SELECT * FROM weighings WHERE recycler_id = '00000000-0000-0000-0000-000000000000' "
          "AND status = 'pending_validation' ORDER BY occurred_at DESC", "ix_weighings_recycler_status_occurred"),
-        ("SELECT count(*) FROM weighings WHERE occurred_at >= now()", "idx_weighings_occurred_at"),
-        ("SELECT * FROM transactions WHERE type = 'sale' AND status = 'pending' "
+        ("weighings", "SELECT count(*) FROM weighings WHERE occurred_at >= now()", "idx_weighings_occurred_at"),
+        ("transactions", "SELECT * FROM transactions WHERE type = 'sale' AND status = 'pending' "
          "ORDER BY occurred_at DESC", "ix_transactions_type_status_occurred"),
-        ("SELECT * FROM users WHERE user_type_code = 'recycler' "
+        ("users", "SELECT * FROM users WHERE user_type_code = 'recycler' "
          "AND verification_status = 'pending'", "ix_users_user_type_verification"),
     ])
-    def test_the_planner_can_use_them(self, db, query, index):
-        # Tables are tiny here, so force the planner off sequential scans to prove the
-        # index matches the query shape (it would be ignored otherwise).
+    def test_the_planner_can_use_them(self, db, table, query, index):
+        # Tables are tiny here, so force the planner off sequential scans to prove the index matches the query
+        # shape (it would be ignored otherwise). Two indexes of a table can both serve a query (an index-only scan
+        # on a composite index also covers `occurred_at`), and which one wins depends on the statistics the rest of
+        # the suite leaves behind. So the other indexes are dropped inside this test's transaction (rolled back
+        # afterwards): the planner can only use the one under test, or not use an index at all.
+        others = db.execute(text(
+            "SELECT c.relname FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+            "JOIN pg_class t ON t.oid = i.indrelid WHERE t.relname = :table AND c.relname <> :index "
+            "AND NOT i.indisprimary AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = i.indexrelid)"),
+            {"table": table, "index": index}).scalars().all()
+        for other in others:
+            db.execute(text(f'DROP INDEX "{other}"'))
         db.execute(text("SET LOCAL enable_seqscan = off"))
         plan = "\n".join(row[0] for row in db.execute(text("EXPLAIN " + query)))
         assert index in plan, plan
