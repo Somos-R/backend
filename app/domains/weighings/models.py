@@ -76,6 +76,8 @@ class Weighing(Base):
     validated_by:     Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     validated_at:     Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     occurred_at:            Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # SHA-256 of what was recorded at registration (see integrity.py). Null only for weighings that predate it.
+    record_hash:      Mapped[str | None]      = mapped_column(String(64), nullable=True)
     created_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

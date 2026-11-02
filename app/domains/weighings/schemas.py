@@ -42,6 +42,15 @@ class WeighingResponse(BaseModel):
     warehouse:        WarehouseResponse
 
 
+class WeighingVerificationResponse(BaseModel):
+    id: uuid.UUID
+    algorithm: str
+    record_hash: str | None
+    # True when the weighing still matches its hash, False when something was changed, None when it has no hash
+    # because it was registered before hashing existed.
+    valid: bool | None
+
+
 class WeighingListResponse(BaseModel):
     total: int
     items: list[WeighingResponse]
