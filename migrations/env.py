@@ -10,6 +10,7 @@ import app.domains.users.models  # noqa: F401 — registers models with Base
 import app.domains.organizations.models  # noqa: F401
 import app.domains.applications.models  # noqa: F401
 import app.domains.collections.models  # noqa: F401
+import app.core.idempotency  # noqa: F401
 
 config = context.config
 

@@ -44,7 +44,7 @@ from app.domains.weighings.router import router as weighings_router
 logger = logging.getLogger(__name__)
 
 CORS_METHODS = ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
-CORS_HEADERS = ["Authorization", "Content-Type", "Accept", "X-Application-Token"]
+CORS_HEADERS = ["Authorization", "Content-Type", "Accept", "X-Application-Token", "Idempotency-Key"]
 
 
 def create_app() -> FastAPI:

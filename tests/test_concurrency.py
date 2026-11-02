@@ -5,6 +5,7 @@ connection), so they exercise the database's locking, not the per-test SAVEPOINT
 They are the ones that would have failed before atomic stock updates and row locks.
 """
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
@@ -188,6 +189,28 @@ def test_concurrent_first_deliveries_create_one_row_and_sum_up(real):
 
 
 # --- 3.1: service-level behavior --------------------------------------------------------------
+
+class TestIdempotentRetries:
+    def test_simultaneous_retries_with_one_key_create_one_weighing(self, real):
+        key = str(uuid.uuid4())
+        body = {"recycler_id": str(real["recycler_id"]), "material_code": "plastic",
+                "warehouse_id": str(real["warehouse_id"]), "kg": "12", "price_per_kg": "300"}
+
+        def submit(i):
+            return _api({**real["admin_headers"], "Idempotency-Key": key}).post("/weighings", json=body)
+
+        try:
+            responses = race(RACERS, submit)
+            # The losers either get the original response or, if it is still being written, a 409 to retry.
+            assert {r.status_code for r in responses} <= {201, 409}
+            assert len({r.json()["id"] for r in responses if r.status_code == 201}) == 1
+            assert _count(real["engine"], Weighing) == 1
+            replay = submit(0)
+            assert replay.status_code == 201 and _count(real["engine"], Weighing) == 1
+        finally:
+            with real["engine"].begin() as connection:
+                connection.execute(text("TRUNCATE idempotency_keys"))
+
 
 class TestStockService:
     def test_add_stock_creates_then_accumulates(self, db, warehouse):
