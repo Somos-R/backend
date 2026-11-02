@@ -26,9 +26,10 @@ from app.domains.inventory.models import (
     Material,
     Warehouse,
 )
-from app.domains.inventory.movements import Movement
+from app.domains.inventory.movements import Movement, MovementType
 from app.domains.inventory.schemas import (
     CreateWarehouseRequest,
+    RecordLossRequest,
     UpdateInventoryItemRequest,
 )
 from app.domains.organizations import scope
@@ -334,3 +335,22 @@ def update_item(db: Session, actor: User, item_id: uuid.UUID, request: UpdateInv
     db.commit()
     db.refresh(item)
     return item
+
+
+def record_loss(db: Session, actor: User, item_id: uuid.UUID, request: RecordLossRequest) -> InventoryMovement:
+    """Write off `kg` of an item as shrinkage. The reason is mandatory and the stock can never go below zero."""
+    item = db.scalars(select(InventoryItem).where(
+        InventoryItem.id == item_id, scope.inventory_write_scope(actor, InventoryItem.warehouse_id))).first()
+    if not item:
+        raise ApiError("inventory_item_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Ítem no encontrado")
+
+    subtract_stock(db, item.material_code, item.warehouse_id, request.kg,
+                   movement=Movement(MovementType.loss, actor_id=actor.id, reason=request.reason.strip()))
+    audit.record(db, Action.INVENTORY_LOSS_RECORDED, actor=actor, target_type="inventory_item", target_id=item.id,
+                 details={"material": item.material_code, "kg": str(request.kg)})
+    db.commit()
+
+    return db.scalars(select(InventoryMovement).where(
+        InventoryMovement.warehouse_id == item.warehouse_id, InventoryMovement.material_code == item.material_code,
+    ).order_by(InventoryMovement.seq.desc()).limit(1).options(
+        selectinload(InventoryMovement.material), selectinload(InventoryMovement.warehouse))).one()

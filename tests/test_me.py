@@ -7,7 +7,7 @@ from tests import factories
 EXPECTED = {
     "eca_admin": {
         "recyclers.view", "weighings.view", "weighings.create", "weighings.review", "weighings.pay",
-        "inventory.view", "inventory.edit", "transactions.view", "transactions.create",
+        "inventory.view", "inventory.edit", "warehouses.create", "transactions.view", "transactions.create",
         "transactions.manage", "transactions.pay", "staff.invite", "staff.view", "staff.manage",
         "links.request", "links.view",
     },

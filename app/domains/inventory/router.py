@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csv_export import csv_response
 from app.core.database import get_db
-from app.core.permissions import ECA_ADMIN, INVENTORY_READ, INVENTORY_WRITE
+from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE, WAREHOUSES_CREATE
 from app.core.security import require_roles
 from app.core.sorting import SortOrder
 from app.domains.inventory import service as inventory_service
@@ -19,6 +19,8 @@ from app.domains.inventory.schemas import (
     InventoryStatsResponse,
     MaterialResponse,
     MovementListResponse,
+    MovementResponse,
+    RecordLossRequest,
     UpdateInventoryItemRequest,
     WarehouseResponse,
 )
@@ -127,7 +129,7 @@ def list_warehouses(
 def create_warehouse(
     body: CreateWarehouseRequest,
     db: Session = Depends(get_db),
-    actor: User = Depends(require_roles(ECA_ADMIN)),
+    actor: User = Depends(require_roles(*WAREHOUSES_CREATE)),
 ):
     return inventory_service.create_warehouse(db, actor, body)
 
@@ -157,3 +159,15 @@ def update_inventory_item(
     actor: User = Depends(require_roles(*INVENTORY_WRITE)),
 ):
     return inventory_service.update_item(db, actor, item_id, request)
+
+
+@router.post("/{item_id}/losses", response_model=MovementResponse, status_code=status.HTTP_201_CREATED)
+def record_inventory_loss(
+    item_id: uuid.UUID,
+    request: RecordLossRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*INVENTORY_WRITE)),
+):
+    """Registra una merma: material que se perdió (humedad, daño, desperdicio). Descuenta el stock y deja un
+    movimiento `loss` en el libro con el motivo, que es obligatorio. El stock nunca queda negativo."""
+    return inventory_service.record_loss(db, actor, item_id, request)
