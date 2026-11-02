@@ -37,6 +37,7 @@ class Movement:
     source_type: SourceType | None = None
     source_id: uuid.UUID | None = None
     actor_id: uuid.UUID | None = None
+    reason: str | None = None
 
 
 def record(
@@ -47,7 +48,7 @@ def record(
         material_code=material_code, warehouse_id=warehouse_id, movement_type=movement.type.value,
         kg_delta=kg_delta, balance_after_kg=balance_after_kg, price_per_kg=price_per_kg,
         source_type=movement.source_type.value if movement.source_type else None, source_id=movement.source_id,
-        actor_id=movement.actor_id, occurred_at=occurred_at)
+        actor_id=movement.actor_id, reason=movement.reason, occurred_at=occurred_at)
     db.add(row)
     db.flush()
     return row

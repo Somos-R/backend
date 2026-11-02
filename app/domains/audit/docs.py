@@ -20,7 +20,7 @@ El registro es de solo lectura y de solo anexar: la base de datos rechaza modifi
 - Usuarios: `recycler.verified`, `recycler.rejected`, `user.updated`, `user.role_changed`.
 - Pesajes: `weighing.created`, `weighing.validated`, `weighing.rejected`, `weighing.paid`.
 - Transacciones: `transaction.created`, `transaction.cancelled`, `transaction.delivered`, `transaction.paid`.
-- Inventario: `inventory.updated`.
+- Inventario: `inventory.updated`, `inventory.loss_recorded`.
 - Somos R (solo visibles desde el backoffice): `admin.*` y `platform_admin.created`.
 
 **Filtros:** `action`, `outcome`, `actor_id`, `target_type`, `target_id`, `request_id`, `since` y `until`
