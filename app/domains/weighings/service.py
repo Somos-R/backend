@@ -10,6 +10,7 @@ from app.core import events, search
 from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.core.periods import resolve_period
 from app.core.permissions import forbidden
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
@@ -214,27 +215,33 @@ def export_weighings(
     return list(rows)
 
 
-def month_stats(db: Session, actor: User) -> tuple[int, Decimal, int, list[tuple[str, Decimal]]]:
-    """(weighings this month, kg this month, pending validation, kg by material this month), all in SQL."""
-    now = datetime.now(timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+def period_stats(
+    db: Session, actor: User, *, date_from: datetime | None = None, date_to: datetime | None = None,
+    material_code: str | None = None,
+) -> tuple[int, Decimal, int, list[tuple[str, Decimal]]]:
+    """(weighings in the period, kg in the period, pending validation, kg by material in the period), all in SQL.
 
-    this_month = Weighing.occurred_at >= start
+    The period is this month so far unless `date_from`/`date_to` say otherwise; `material_code` narrows every
+    figure. The pending count is whatever still waits for validation, whenever it was weighed.
+    """
+    start, end = resolve_period(date_from, date_to)
+    in_period = [Weighing.occurred_at >= start] + ([Weighing.occurred_at < end] if end else [])
     mine = scope.weighing_scope(actor)
+    of_material = [Weighing.material_code == material_code] if material_code else []
 
-    count_month, total_kg = db.execute(
-        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(this_month, mine)
+    count_period, total_kg = db.execute(
+        select(func.count(Weighing.id), func.coalesce(func.sum(Weighing.kg), 0)).where(*in_period, *of_material, mine)
     ).one()
     pending = db.scalar(
-        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation, mine)
+        select(func.count(Weighing.id)).where(Weighing.status == WeighingStatus.pending_validation, *of_material, mine)
     ) or 0
     by_material = db.execute(
         select(Weighing.material_code, func.sum(Weighing.kg))
-        .where(this_month, mine)
+        .where(*in_period, *of_material, mine)
         .group_by(Weighing.material_code)
         .order_by(Weighing.material_code)
     ).all()
-    return count_month, total_kg, pending, [(material, kg) for material, kg in by_material]
+    return count_period, total_kg, pending, [(material, kg) for material, kg in by_material]
 
 
 def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) -> Weighing:

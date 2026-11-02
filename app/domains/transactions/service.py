@@ -1,14 +1,15 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select, true
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.core.periods import resolve_period
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory import service as inventory_service
@@ -219,12 +220,18 @@ def export_transactions(
     return list(rows)
 
 
-def month_stats(db: Session, actor: User) -> tuple[dict[TransactionType, tuple[int, Decimal, Decimal]], int]:
-    """(count, kg, value) per type this month and the pending count, all in SQL."""
-    now = datetime.now(timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+def period_stats(
+    db: Session, actor: User, *, date_from: datetime | None = None, date_to: datetime | None = None,
+    material_code: str | None = None,
+) -> tuple[dict[TransactionType, tuple[int, Decimal, Decimal]], int]:
+    """(count, kg, value) per type in the period and the pending count, all in SQL.
 
-    this_month = Transaction.occurred_at >= start
+    The period is this month so far unless `date_from`/`date_to` say otherwise; `material_code` narrows every figure.
+    """
+    start, end = resolve_period(date_from, date_to)
+    this_month = and_(Transaction.occurred_at >= start, Transaction.occurred_at < end if end else true())
+    if material_code:
+        this_month = and_(this_month, Transaction.material_code == material_code)
     mine = scope.transaction_scope(actor)
 
     per_type = {

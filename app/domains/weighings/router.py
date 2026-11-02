@@ -105,12 +105,18 @@ def export_weighings(
 
 @router.get("/stats", response_model=WeighingStatsResponse)
 def weighing_stats(
+    date_from: datetime | None = Query(default=None, description="Desde esta fecha y hora (incluida). Por defecto, el inicio del mes"),
+    date_to: datetime | None = Query(default=None, description="Hasta esta fecha y hora (excluida). Por defecto, hasta hoy"),
+    material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*WEIGHINGS_READ)),
 ):
-    count_month, total_kg, pending, by_material = weighing_service.month_stats(db, actor)
+    """Cifras de los pesajes del periodo (este mes por defecto). Los campos `*_month` conservan su nombre aunque
+    el periodo sea otro."""
+    count_period, total_kg, pending, by_material = weighing_service.period_stats(
+        db, actor, date_from=date_from, date_to=date_to, material_code=material_code)
     return WeighingStatsResponse(
-        total_weighings_month=count_month,
+        total_weighings_month=count_period,
         total_kg_month=total_kg,
         pending_count=pending,
         by_material=[{"material": material, "kg": float(kg)} for material, kg in by_material],

@@ -86,10 +86,16 @@ def export_transactions(
 
 @router.get("/stats", response_model=TransactionStatsResponse)
 def transaction_stats(
+    date_from: datetime | None = Query(default=None, description="Desde esta fecha y hora (incluida). Por defecto, el inicio del mes"),
+    date_to: datetime | None = Query(default=None, description="Hasta esta fecha y hora (excluida). Por defecto, hasta hoy"),
+    material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*TRANSACTIONS_READ)),
 ):
-    per_type, pending = tx_service.month_stats(db, actor)
+    """Cifras de las transacciones del periodo (este mes por defecto). Los campos `*_month` conservan su nombre
+    aunque el periodo sea otro."""
+    per_type, pending = tx_service.period_stats(
+        db, actor, date_from=date_from, date_to=date_to, material_code=material_code)
     empty = (0, Decimal("0"), Decimal("0"))
     purchases = per_type.get(TransactionType.purchase, empty)
     sales = per_type.get(TransactionType.sale, empty)

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, selectinload
 
@@ -248,9 +248,14 @@ def list_movements(
         options=(selectinload(InventoryMovement.material), selectinload(InventoryMovement.warehouse)))
 
 
-def stats(db: Session, actor: User) -> tuple[Decimal, Decimal, dict[str, int]]:
-    """(total kg, total value, item count by status) of what the actor may see, all in SQL."""
+def stats(db: Session, actor: User, *, material_code: str | None = None) -> tuple[Decimal, Decimal, dict[str, int]]:
+    """(total kg, total value, item count by status) of what the actor may see, all in SQL.
+
+    It is the stock as it is now, so a period makes no sense here; `material_code` narrows it to one material.
+    """
     visible = scope.inventory_scope(actor, InventoryItem.warehouse_id)
+    if material_code:
+        visible = and_(visible, InventoryItem.material_code == material_code)
     total_stock, total_value = db.execute(select(
         func.coalesce(func.sum(InventoryItem.stock_kg), 0),
         func.coalesce(func.sum(InventoryItem.stock_kg * InventoryItem.price_per_kg), 0),

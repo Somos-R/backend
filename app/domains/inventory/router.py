@@ -100,10 +100,12 @@ def list_movements(
 
 @router.get("/stats", response_model=InventoryStatsResponse)
 def inventory_stats(
+    material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    total_stock, total_value, by_status = inventory_service.stats(db, actor)
+    """Cifras del stock actual. Como es una foto de hoy, no admite periodo; `material_code` la reduce a un material."""
+    total_stock, total_value, by_status = inventory_service.stats(db, actor, material_code=material_code)
     return InventoryStatsResponse(
         total_stock_kg=total_stock,
         total_value=total_value,
