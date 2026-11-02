@@ -44,6 +44,7 @@ WEIGHINGS_REVIEW = frozenset({ECA_ADMIN, ECA_OPERATOR, ASSOC_ADMIN, ASSOC_OPERAT
 
 INVENTORY_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE, ASSOC_ADMIN, ASSOC_OPERATOR})
 INVENTORY_WRITE = frozenset({ECA_ADMIN, ECA_WAREHOUSE})
+WAREHOUSES_CREATE = frozenset({ECA_ADMIN})  # narrower than INVENTORY_WRITE: the warehouse keeper cannot open a warehouse
 
 TRANSACTIONS_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE, ASSOC_ADMIN})
 TRANSACTIONS_WRITE = frozenset({ECA_ADMIN, ECA_WAREHOUSE})
@@ -64,6 +65,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "weighings.pay": PAYMENTS,
     "inventory.view": INVENTORY_READ,
     "inventory.edit": INVENTORY_WRITE,
+    "warehouses.create": WAREHOUSES_CREATE,  # POST /inventory/warehouses
     "transactions.view": TRANSACTIONS_READ,
     "transactions.create": TRANSACTIONS_WRITE,
     "transactions.manage": TRANSACTIONS_WRITE,
