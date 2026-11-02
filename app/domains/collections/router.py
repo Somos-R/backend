@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.idempotency import IdempotencyKeyHeader, create_once
 from app.core.permissions import forbidden
 from app.core.rate_limit import limiter, register_limit
 from app.core.security import get_current_user
@@ -40,10 +41,14 @@ def get_requester(user: User = Depends(get_current_user)) -> User:
 def create_collection(
     request: Request,
     body: CreateCollectionRequest,
+    idempotency_key: IdempotencyKeyHeader = None,
     db: Session = Depends(get_db),
     actor: User = Depends(get_requester),
 ):
-    return service.create_collection(db, actor, body)
+    return create_once(
+        db, user_id=actor.id, key=idempotency_key, operation="collections.create", request=body,
+        response_model=CollectionResponse, status_code=status.HTTP_201_CREATED,
+        create=lambda: service.create_collection(db, actor, body))
 
 
 @router.get("", response_model=CollectionListResponse, **LIST_COLLECTIONS_DOCS)
