@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography, Geometry
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -80,6 +80,10 @@ class User(Base):
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     verifier: Mapped["User | None"] = relationship("User", remote_side="User.id", foreign_keys=[verified_by])
+    # Where the recycler's working day starts: the route engine plans from here. GiST-indexed in the migration.
+    start_location: Mapped[object | None] = mapped_column(
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
+    )
 
     # --- eca ---
     employee_code: Mapped[str | None] = mapped_column(String(50), nullable=True)

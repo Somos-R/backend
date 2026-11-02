@@ -2,12 +2,12 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import status
-from geoalchemy2 import WKTElement
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.core.spatial import point
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.collections.models import Collection, CollectionStatus
@@ -52,7 +52,7 @@ def create_collection(db: Session, actor: User, request: CreateCollectionRequest
         address=request.address,
         latitude=request.latitude,
         longitude=request.longitude,
-        location=WKTElement(f"POINT({request.longitude} {request.latitude})", srid=4326),
+        location=point(request.latitude, request.longitude),
         materials=request.materials,
         notes=request.notes,
         scheduled_date=request.scheduled_date,

@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+from geoalchemy2 import Geography
 from sqlalchemy import (
     DateTime,
     Enum,
@@ -55,6 +56,9 @@ class Organization(Base):
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     address: Mapped[str | None] = mapped_column(Text, nullable=True)
     city: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # An ECA's drop-off point, where routes close. GiST-indexed in the migration; query it through app/core/spatial.py.
+    location: Mapped[object | None] = mapped_column(
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True)
 
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
