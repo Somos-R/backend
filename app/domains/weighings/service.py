@@ -10,7 +10,7 @@ from app.core import events, search
 from app.core.csv_export import MAX_EXPORT_ROWS
 from app.core.errors import ApiError
 from app.core.pagination import paginate
-from app.core.periods import resolve_period
+from app.core.periods import Period
 from app.core.permissions import forbidden
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
@@ -216,16 +216,14 @@ def export_weighings(
 
 
 def period_stats(
-    db: Session, actor: User, *, date_from: datetime | None = None, date_to: datetime | None = None,
-    material_code: str | None = None,
+    db: Session, actor: User, *, period: Period, material_code: str | None = None,
 ) -> tuple[int, Decimal, int, list[tuple[str, Decimal]]]:
     """(weighings in the period, kg in the period, pending validation, kg by material in the period), all in SQL.
 
-    The period is this month so far unless `date_from`/`date_to` say otherwise; `material_code` narrows every
-    figure. The pending count is whatever still waits for validation, whenever it was weighed.
+    `material_code` narrows every figure. The pending count is whatever still waits for validation, whenever it was
+    weighed.
     """
-    start, end = resolve_period(date_from, date_to)
-    in_period = [Weighing.occurred_at >= start] + ([Weighing.occurred_at < end] if end else [])
+    in_period = [Weighing.occurred_at >= period.start] + ([Weighing.occurred_at <= period.end] if period.end else [])
     mine = scope.weighing_scope(actor)
     of_material = [Weighing.material_code == material_code] if material_code else []
 

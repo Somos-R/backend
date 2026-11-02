@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.csv_export import csv_response
 from app.core.database import get_db
 from app.core.idempotency import IdempotencyKeyHeader, create_once
+from app.core.periods import Period, period_params
 from app.core.permissions import (
     PAYMENTS,
     WEIGHINGS_CREATE,
@@ -21,7 +22,7 @@ from app.core.security import get_current_user, require_roles
 from app.core.sorting import SortOrder
 from app.domains.users.models import User
 from app.domains.weighings import service as weighing_service
-from app.domains.weighings.docs import CREATE_WEIGHING_DOCS
+from app.domains.weighings.docs import CREATE_WEIGHING_DOCS, WEIGHING_STATS_DOCS
 from app.domains.weighings.models import AffiliationStatus, WeighingStatus
 from app.domains.weighings.schemas import (
     CreateWeighingRequest,
@@ -105,18 +106,15 @@ def export_weighings(
     return csv_response("weighings.csv", header, rows)
 
 
-@router.get("/stats", response_model=WeighingStatsResponse)
+@router.get("/stats", response_model=WeighingStatsResponse, **WEIGHING_STATS_DOCS)
 def weighing_stats(
-    date_from: datetime | None = Query(default=None, description="Desde esta fecha y hora (incluida). Por defecto, el inicio del mes"),
-    date_to: datetime | None = Query(default=None, description="Hasta esta fecha y hora (excluida). Por defecto, hasta hoy"),
+    period: Period = Depends(period_params),
     material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*WEIGHINGS_READ)),
 ):
-    """Cifras de los pesajes del periodo (este mes por defecto). Los campos `*_month` conservan su nombre aunque
-    el periodo sea otro."""
     count_period, total_kg, pending, by_material = weighing_service.period_stats(
-        db, actor, date_from=date_from, date_to=date_to, material_code=material_code)
+        db, actor, period=period, material_code=material_code)
     return WeighingStatsResponse(
         total_weighings_month=count_period,
         total_kg_month=total_kg,

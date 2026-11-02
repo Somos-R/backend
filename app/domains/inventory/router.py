@@ -11,6 +11,7 @@ from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE, WAREHOUSES_CRE
 from app.core.security import require_roles
 from app.core.sorting import SortOrder
 from app.domains.inventory import service as inventory_service
+from app.domains.inventory.docs import INVENTORY_STATS_DOCS
 from app.domains.inventory.movements import MovementType
 from app.domains.inventory.schemas import (
     CreateWarehouseRequest,
@@ -100,13 +101,12 @@ def list_movements(
     return MovementListResponse(total=total, items=items)
 
 
-@router.get("/stats", response_model=InventoryStatsResponse)
+@router.get("/stats", response_model=InventoryStatsResponse, **INVENTORY_STATS_DOCS)
 def inventory_stats(
     material_code: str | None = Query(default=None, description="Solo este material"),
     db: Session = Depends(get_db),
     actor: User = Depends(require_roles(*INVENTORY_READ)),
 ):
-    """Cifras del stock actual. Como es una foto de hoy, no admite periodo; `material_code` la reduce a un material."""
     total_stock, total_value, by_status = inventory_service.stats(db, actor, material_code=material_code)
     return InventoryStatsResponse(
         total_stock_kg=total_stock,

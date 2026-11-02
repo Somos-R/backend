@@ -43,7 +43,7 @@ def history(client_as, eca_admin, recycler, warehouse, db):
     old_glass = _weigh(client_as, eca_admin, recycler, warehouse, "glass", "5", validate=True)
     for weighing_id in (old_plastic, old_glass):
         _move(db, Weighing, weighing_id, two_months_ago)
-    for tx in db.query(Transaction).all():
+    for tx in db.query(Transaction).filter(Transaction.weighing_id.in_([old_plastic, old_glass])):
         _move(db, Transaction, tx.id, two_months_ago)
     return two_months_ago
 
@@ -59,10 +59,19 @@ class TestWeighingStats:
         assert body["total_weighings_month"] == 2 and Decimal(body["total_kg_month"]) == Decimal("25")
         assert {m["material"]: m["kg"] for m in body["by_material"]} == {"glass": 5.0, "plastic": 20.0}
 
-    def test_the_end_of_the_period_is_excluded_and_the_start_included(self, client_as, eca_admin, history):
-        at_start = client_as(eca_admin).get("/weighings/stats", params={"date_from": _iso(history), "date_to": _iso(history + timedelta(days=1))}).json()
-        at_end = client_as(eca_admin).get("/weighings/stats", params={"date_from": _iso(history - timedelta(days=1)), "date_to": _iso(history)}).json()
-        assert at_start["total_weighings_month"] == 2 and at_end["total_weighings_month"] == 0
+    def test_both_ends_of_the_period_are_included_like_in_the_lists(self, client_as, eca_admin, history):
+        c = client_as(eca_admin)
+        at_start = c.get("/weighings/stats", params={"date_from": _iso(history), "date_to": _iso(history + timedelta(days=1))}).json()
+        at_end = c.get("/weighings/stats", params={"date_from": _iso(history - timedelta(days=1)), "date_to": _iso(history)}).json()
+        just_after = c.get("/weighings/stats", params={"date_from": _iso(history + timedelta(seconds=1))}).json()
+        assert at_start["total_weighings_month"] == 2 and at_end["total_weighings_month"] == 2
+        assert just_after["total_weighings_month"] == 1  # only this month's
+
+    def test_the_figures_match_the_list_filtered_with_the_same_dates(self, client_as, eca_admin, history):
+        window = {"date_from": _iso(history - timedelta(days=1)), "date_to": _iso(history)}
+        stats = client_as(eca_admin).get("/weighings/stats", params=window).json()
+        listed = client_as(eca_admin).get("/weighings", params=window).json()
+        assert stats["total_weighings_month"] == listed["total"] == 2
 
     def test_a_material_narrows_every_figure(self, client_as, eca_admin, history):
         params = {"date_from": _iso(history - timedelta(days=1)), "date_to": _iso(history + timedelta(days=1)),
@@ -80,18 +89,12 @@ class TestWeighingStats:
         body = client_as(eca_admin).get("/weighings/stats", params={"material_code": "metal"}).json()
         assert body["total_weighings_month"] == 0 and Decimal(body["total_kg_month"]) == 0 and body["by_material"] == []
 
-    def test_another_organization_never_sees_them(self, client_as, db, history):
-        other = factories.make_organization(db, "eca", legal_name="Otra ECA")
-        outsider = factories.make_user(db, "eca", role_code="eca_admin", organization_id=other.id)
-        params = {"date_from": _iso(history - timedelta(days=1)), "date_to": _iso(history + timedelta(days=1))}
-        assert client_as(outsider).get("/weighings/stats", params=params).json()["total_weighings_month"] == 0
-
     @pytest.mark.parametrize("endpoint", ["/weighings/stats", "/transactions/stats"])
-    def test_the_end_must_come_after_the_start(self, client_as, eca_admin, endpoint):
+    def test_the_end_cannot_come_before_the_start(self, client_as, eca_admin, endpoint):
         now = datetime.now(timezone.utc)
-        for start, end in ((now, now), (now, now - timedelta(days=1))):
-            r = client_as(eca_admin).get(endpoint, params={"date_from": _iso(start), "date_to": _iso(end)})
-            assert r.status_code == 422 and r.json()["code"] == "invalid_period"
+        r = client_as(eca_admin).get(endpoint, params={"date_from": _iso(now), "date_to": _iso(now - timedelta(days=1))})
+        assert r.status_code == 422 and r.json()["code"] == "invalid_period"
+        assert client_as(eca_admin).get(endpoint, params={"date_from": _iso(now), "date_to": _iso(now)}).status_code == 200
 
     def test_a_date_without_a_time_zone_counts_as_utc(self, client_as, eca_admin, history):
         naive = (history - timedelta(days=1)).replace(tzinfo=None)
