@@ -1,5 +1,3 @@
-"""Idempotent creation (Sprint 5): a retry with the same `Idempotency-Key` returns the original response and
-creates nothing; the same key with another body is refused."""
 import uuid
 from datetime import datetime, timedelta, timezone
 
