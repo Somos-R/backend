@@ -13,3 +13,12 @@ reintento devuelva la respuesta original sin registrar otro pesaje. La misma cla
 La clave se recuerda 7 días y es propia de cada cuenta.
 """,
 }
+
+VERIFY_WEIGHING_DOCS: dict[str, Any] = {
+    "summary": "Verificar la integridad de un pesaje",
+    "description": """
+Recalcula el hash SHA-256 del pesaje y lo compara con el que se guardó al registrarlo. `valid` es `true` si nada
+cambió, `false` si algún dato fue alterado y `null` si el pesaje es anterior al hash. Lo puede consultar quien puede
+leer el pesaje; a los demás les responde `404 weighing_not_found`.
+""",
+}
