@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.inventory.schemas import MaterialResponse, WarehouseResponse
 from app.domains.transactions.models import TransactionStatus, TransactionType
@@ -49,8 +49,9 @@ class TransactionListResponse(BaseModel):
 class CreateSaleRequest(BaseModel):
     material_code: str
     warehouse_id:  uuid.UUID
-    kg:            Decimal
-    price_per_kg:     Decimal
+    # Two decimals at most and the width of the columns: what is stored is exactly what was sent.
+    kg:            Decimal = Field(max_digits=10, decimal_places=2)
+    price_per_kg:     Decimal = Field(max_digits=10, decimal_places=2)
     buyer_name:    str | None = None
     buyer_nit:     str | None = None
     buyer_email:   str | None = None

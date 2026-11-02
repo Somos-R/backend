@@ -54,8 +54,9 @@ class InventoryStatsResponse(BaseModel):
 
 
 class UpdateInventoryItemRequest(BaseModel):
-    stock_min_kg: Decimal | None = None
-    price_per_kg:    Decimal | None = None
+    # Same width and decimals as the columns, and never negative (the table refuses it anyway).
+    stock_min_kg: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    price_per_kg:    Decimal | None = Field(default=None, ge=0, max_digits=10, decimal_places=2)
 
 
 class RecordLossRequest(BaseModel):
