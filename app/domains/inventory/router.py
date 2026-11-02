@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csv_export import csv_response
 from app.core.database import get_db
-from app.core.permissions import ECA_ADMIN, INVENTORY_READ, INVENTORY_WRITE
+from app.core.permissions import INVENTORY_READ, INVENTORY_WRITE, WAREHOUSES_CREATE
 from app.core.security import require_roles
 from app.core.sorting import SortOrder
 from app.domains.inventory import service as inventory_service
@@ -125,7 +125,7 @@ def list_warehouses(
 def create_warehouse(
     body: CreateWarehouseRequest,
     db: Session = Depends(get_db),
-    actor: User = Depends(require_roles(ECA_ADMIN)),
+    actor: User = Depends(require_roles(*WAREHOUSES_CREATE)),
 ):
     return inventory_service.create_warehouse(db, actor, body)
 

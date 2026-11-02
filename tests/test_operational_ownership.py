@@ -127,6 +127,14 @@ class TestCreatingAWarehouse:
         assert client_as(getattr(getattr(w, group), attr)).post(
             "/inventory/warehouses", json={"name": "Bodega X"}).status_code == 403
 
+    @pytest.mark.parametrize("who", ["a.admin", "a.operator", "a.extra", "x.admin", "x.operator"])
+    def test_the_announced_capability_matches_what_the_endpoint_enforces(self, client_as, w, who):
+        group, attr = who.split(".")
+        user = getattr(getattr(w, group), attr)
+        announced = "warehouses.create" in client_as(user).get("/auth/me").json()["capabilities"]
+        allowed = client_as(user).post("/inventory/warehouses", json={"name": "Bodega X"}).status_code != 403
+        assert announced == allowed
+
     def test_the_eca_must_be_approved_and_the_admin_must_have_one(self, client_as, db, w):
         pending = factories.make_organization(db, "eca", status=OrganizationStatus.submitted)
         admin = factories.make_user(db, "eca", role_code="eca_admin", organization_id=pending.id)
