@@ -18,6 +18,12 @@ el cuerpo no lleva `citizen_id` ni `requester_id`.
 - `scheduled_date` (opcional): no puede ser anterior a hoy (hora de Colombia).
 
 Errores: `404 material_not_found`, `400 material_inactive`, `422 scheduled_date_in_past`, `422 validation_error`.
+
+**Reintentos sin duplicar:** la cabecera opcional `Idempotency-Key` (un UUID que el cliente genera al crear la
+solicitud y repite en cada reintento) hace que un reintento devuelva la respuesta original, sin crear otra
+solicitud. La misma clave con otro cuerpo responde `422 idempotency_key_reused`; mientras la primera petición
+sigue en curso, `409 idempotency_request_in_progress`. La clave se recuerda 7 días.
+
 Queda auditado como `collection.requested` (solo los códigos de material, nunca la dirección).
 {_WHO}
 """,
