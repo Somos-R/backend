@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from geoalchemy2 import Geography
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -17,7 +18,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
@@ -31,6 +32,19 @@ class CollectionStatus(str, enum.Enum):
     cancelled = "cancelled"
 
 
+class RejectionReason(Base):
+    """Why an association turns a pickup request down: always a code from this catalog, never free text, so the
+    reasons can be counted."""
+
+    __tablename__ = "rejection_reasons"
+
+    code:           Mapped[str]  = mapped_column(String(40), primary_key=True)
+    label:          Mapped[str]  = mapped_column(String(150), nullable=False)
+    # Whether the requester can fix the request and send it again, or the rejection is final.
+    is_correctable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_active:      Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class Collection(Base):
     """A request from a citizen or a building to have their recyclable material picked up."""
 
@@ -38,6 +52,8 @@ class Collection(Base):
     __table_args__ = (
         CheckConstraint("latitude BETWEEN -90 AND 90", name="ck_collections_latitude_range"),
         CheckConstraint("longitude BETWEEN -180 AND 180", name="ck_collections_longitude_range"),
+        CheckConstraint("(status = 'rejected') = (rejection_reason_code IS NOT NULL)",
+                        name="ck_collections_rejected_has_reason"),
         # A requester's own history filtered by state, newest first.
         Index("ix_collections_requester_status_created", "requester_id", "status", "created_at"),
     )
@@ -59,6 +75,15 @@ class Collection(Base):
     scheduled_date: Mapped[date | None]    = mapped_column(Date, nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_at: Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
+    # The association that handles the request. Nothing assigns it yet; until then no association reaches it.
+    association_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
+    rejection_reason_code: Mapped[str | None] = mapped_column(
+        String(40), ForeignKey("rejection_reasons.code"), nullable=True)
+    rejected_by:  Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    rejected_at:  Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
     created_at:   Mapped[datetime]         = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:   Mapped[datetime]         = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    rejection_reason: Mapped[RejectionReason | None] = relationship()
