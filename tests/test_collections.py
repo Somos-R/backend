@@ -1,5 +1,5 @@
-"""Pickup requests (B-1.1): a citizen or a building asks, only they see their own, and they may cancel while
-nobody has been assigned."""
+"""Pickup requests (B-1.1, REC-01): a citizen or a building asks, only they see their own, and they may cancel
+while nobody has been assigned; the association it is assigned to may reject it with a reason of the catalog."""
 import uuid
 from datetime import timedelta
 
@@ -8,7 +8,7 @@ from geoalchemy2 import Geometry
 from sqlalchemy import cast, func, select
 
 from app.domains.collections import service as collections_service
-from app.domains.collections.models import Collection, CollectionStatus
+from app.domains.collections.models import Collection, CollectionStatus, RejectionReason
 from tests import factories
 
 BODY = {
@@ -22,6 +22,14 @@ BODY = {
 
 def _create(client, **changes):
     return client.post("/collections", json={**BODY, **changes})
+
+
+def _set_status(db, collection_id, status: CollectionStatus) -> None:
+    collection = db.get(Collection, uuid.UUID(collection_id))
+    collection.status = status
+    # A rejected request always carries its reason (ck_collections_rejected_has_reason).
+    collection.rejection_reason_code = "duplicate_request" if status == CollectionStatus.rejected else None
+    db.commit()
 
 
 class TestCreate:
@@ -190,8 +198,7 @@ class TestCancel:
     def test_only_pending_assignment_can_be_cancelled(self, client_as, citizen, db, current):
         c = client_as(citizen)
         created = _create(c).json()
-        db.get(Collection, uuid.UUID(created["id"])).status = current
-        db.commit()
+        _set_status(db, created["id"], current)
         r = c.patch(f"/collections/{created['id']}/cancel")
         assert r.status_code == 409 and r.json()["code"] == "collection_not_cancellable"
         assert db.get(Collection, uuid.UUID(created["id"])).status == current
@@ -206,3 +213,163 @@ class TestCancel:
         r = client_as(factories.make_user(db, "citizen")).patch(f"/collections/{created['id']}/cancel")
         assert r.status_code == 404 and r.json()["code"] == "collection_not_found"
         assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.pending_assignment
+
+
+@pytest.fixture
+def association_operator(db):
+    org = factories.make_organization(db, "association")
+    return factories.make_user(db, "association", role_code="association_operator", organization_id=org.id)
+
+
+def _assigned_to(client, db, association) -> dict:
+    """A citizen's request, assigned to `association` (nothing assigns one through the API yet)."""
+    created = _create(client).json()
+    db.get(Collection, uuid.UUID(created["id"])).association_id = association.organization_id
+    db.commit()
+    return created
+
+
+def _reject(client, collection_id, reason_code="incomplete_address"):
+    return client.post(f"/collections/{collection_id}/reject", json={"reason_code": reason_code})
+
+
+class TestRejectionReasons:
+    def test_the_catalog_lists_correctable_reasons_first(self, client_as, citizen):
+        r = client_as(citizen).get("/collections/rejection-reasons")
+        assert r.status_code == 200, r.text
+        assert r.json() == [
+            {"code": "incomplete_address", "label": "Dirección incompleta o no ubicable", "is_correctable": True},
+            {"code": "insufficient_description", "label": "Foto o descripción insuficiente", "is_correctable": True},
+            {"code": "invalid_contact", "label": "Datos de contacto inválidos", "is_correctable": True},
+            {"code": "duplicate_request", "label": "Solicitud duplicada", "is_correctable": False},
+            {"code": "non_recoverable_material", "label": "Material no aprovechable", "is_correctable": False},
+            {"code": "outside_coverage", "label": "Fuera de la zona de cobertura", "is_correctable": False},
+        ]
+
+    def test_a_retired_reason_is_not_listed(self, client_as, association_operator, db):
+        db.get(RejectionReason, "invalid_contact").is_active = False
+        db.commit()
+        codes = [r["code"] for r in client_as(association_operator).get("/collections/rejection-reasons").json()]
+        assert "invalid_contact" not in codes and len(codes) == 5
+
+    def test_a_token_is_required(self, client):
+        assert client.get("/collections/rejection-reasons").status_code == 401
+
+
+class TestReject:
+    def test_the_association_rejects_with_a_reason_and_the_requester_sees_it(
+        self, client_as, citizen, association_operator, db,
+    ):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        r = _reject(client_as(association_operator), created["id"])
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "rejected" and body["rejected_at"] is not None
+        assert body["rejection_reason"] == {
+            "code": "incomplete_address", "label": "Dirección incompleta o no ubicable", "is_correctable": True}
+        assert db.get(Collection, uuid.UUID(created["id"])).rejected_by == association_operator.id
+
+        seen = client_as(citizen).get(f"/collections/{created['id']}").json()
+        assert seen["status"] == "rejected" and seen["rejection_reason"]["is_correctable"] is True
+        listed = client_as(citizen).get("/collections", params={"status": "rejected"}).json()
+        assert listed["items"][0]["rejection_reason"]["code"] == "incomplete_address"
+
+    def test_a_final_reason_says_it_cannot_be_corrected(self, client_as, citizen, association_admin, db):
+        created = _assigned_to(client_as(citizen), db, association_admin)
+        r = _reject(client_as(association_admin), created["id"], "outside_coverage")
+        assert r.status_code == 200 and r.json()["rejection_reason"]["is_correctable"] is False
+
+    def test_a_pending_request_shows_no_rejection(self, client_as, citizen):
+        body = _create(client_as(citizen)).json()
+        assert body["rejection_reason"] is None and body["rejected_at"] is None and body["association_id"] is None
+
+    @pytest.mark.parametrize("reason_code", ["dirección mala", "kryptonite"])
+    def test_only_a_code_of_the_catalog_is_accepted(self, client_as, citizen, association_operator, db, reason_code):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        r = _reject(client_as(association_operator), created["id"], reason_code)
+        assert r.status_code == 422 and r.json()["code"] == "rejection_reason_not_found"
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.pending_assignment
+
+    def test_a_retired_reason_is_refused(self, client_as, citizen, association_operator, db):
+        db.get(RejectionReason, "invalid_contact").is_active = False
+        db.commit()
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        r = _reject(client_as(association_operator), created["id"], "invalid_contact")
+        assert r.status_code == 422 and r.json()["code"] == "rejection_reason_not_found"
+
+    @pytest.mark.parametrize("body", [{}, {"reason_code": ""}, {"reason_code": "x" * 41}])
+    def test_invalid_bodies_are_refused(self, client_as, citizen, association_operator, db, body):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        r = client_as(association_operator).post(f"/collections/{created['id']}/reject", json=body)
+        assert r.status_code == 422 and r.json()["code"] == "validation_error"
+
+    @pytest.mark.parametrize("current", [
+        CollectionStatus.assigned, CollectionStatus.rejected, CollectionStatus.cancelled])
+    def test_only_pending_assignment_can_be_rejected(self, client_as, citizen, association_operator, db, current):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        _set_status(db, created["id"], current)
+        r = _reject(client_as(association_operator), created["id"])
+        assert r.status_code == 409 and r.json()["code"] == "collection_not_rejectable"
+        assert db.get(Collection, uuid.UUID(created["id"])).status == current
+
+    def test_a_cancelled_request_cannot_be_rejected_after_the_fact(self, client_as, citizen, association_operator, db):
+        c = client_as(citizen)
+        created = _assigned_to(c, db, association_operator)
+        c.patch(f"/collections/{created['id']}/cancel")
+        assert _reject(client_as(association_operator), created["id"]).status_code == 409
+
+    def test_a_request_assigned_to_no_association_is_out_of_reach(self, client_as, citizen, association_operator):
+        created = _create(client_as(citizen)).json()
+        r = _reject(client_as(association_operator), created["id"])
+        assert r.status_code == 404 and r.json()["code"] == "collection_not_found"
+        assert _reject(client_as(association_operator), uuid.uuid4()).status_code == 404
+
+    def test_staff_without_an_organization_reaches_nothing(self, client_as, citizen, association_operator, db):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        stray = factories.make_user(db, "association", role_code="association_operator", organization_id=None)
+        assert _reject(client_as(stray), created["id"]).status_code == 404
+
+    @pytest.mark.parametrize("kind", ["citizen", "recycler", "eca_admin", "eca_operator", "route_manager"])
+    def test_only_association_admins_and_operators_may_reject(self, client_as, citizen, db, kind):
+        created = _create(client_as(citizen)).json()
+        actor = factories.make_actor(db, kind)
+        assert _reject(client_as(actor), created["id"]).status_code == 403
+
+    def test_the_requester_cannot_reject_their_own(self, client_as, citizen, association_operator, db):
+        created = _assigned_to(client_as(citizen), db, association_operator)
+        assert _reject(client_as(citizen), created["id"]).status_code == 403
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.pending_assignment
+
+    def test_a_rejected_request_must_carry_its_reason(self, client_as, citizen, db):
+        from sqlalchemy.exc import IntegrityError
+
+        created = _create(client_as(citizen)).json()
+        db.get(Collection, uuid.UUID(created["id"])).status = CollectionStatus.rejected
+        with pytest.raises(IntegrityError, match="ck_collections_rejected_has_reason"):
+            db.flush()
+        db.rollback()
+
+    def test_listing_rejected_requests_costs_the_same_queries_for_few_and_many(
+        self, client_as, citizen, association_operator, db, count_queries,
+    ):
+        c, operator = client_as(citizen), client_as(association_operator)
+        association_id = association_operator.organization_id  # read before expunge_all() detaches it
+        reasons = ["incomplete_address", "invalid_contact", "duplicate_request"]
+
+        def reject_more(n):
+            for i in range(n):
+                created = _create(c).json()
+                db.get(Collection, uuid.UUID(created["id"])).association_id = association_id
+                db.commit()
+                assert _reject(operator, created["id"], reasons[i % 3]).status_code == 200
+
+        def measure():
+            db.expunge_all()
+            with count_queries() as statements:
+                assert c.get("/collections").status_code == 200
+            return len(statements)
+
+        reject_more(2)
+        few = measure()
+        reject_more(9)
+        assert measure() == few

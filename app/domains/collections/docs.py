@@ -34,6 +34,10 @@ LIST_COLLECTIONS_DOCS: dict[str, Any] = {
     "description": f"""
 Lista paginada de las solicitudes de la cuenta autenticada, de la más reciente a la más antigua. Filtro opcional
 `status` (`pending_assignment`, `assigned`, `rejected`, `cancelled`). Responde `{{"total", "items"}}`.
+
+Una solicitud rechazada trae `rejection_reason` (`code`, `label` e `is_correctable`: si quien la pidió puede
+corregirla y volver a enviarla, o si el rechazo es definitivo) y `rejected_at`; en otro estado ambos son `null`.
+`association_id` es la asociación que atiende la solicitud (`null` mientras no se asigne).
 {_WHO}
 """,
 }
@@ -53,5 +57,37 @@ Cancela una solicitud que sigue en `pending_assignment`, con un motivo opcional 
 caracteres). En cualquier otro estado (ya asignada a una ruta, rechazada o cancelada) responde
 `409 collection_not_cancellable`. Queda auditado como `collection.cancelled`.
 {_WHO}
+""",
+}
+
+REJECTION_REASONS_DOCS: dict[str, Any] = {
+    "summary": "Motivos de rechazo de una solicitud de recolección",
+    "description": """
+Catálogo de los motivos con los que una asociación rechaza una solicitud, solo los activos; primero los que
+quien la pidió puede corregir (`is_correctable: true`) y luego los definitivos. Cada uno trae `code`, `label`
+e `is_correctable`.
+
+Hoy: corregibles `incomplete_address`, `invalid_contact`, `insufficient_description`; definitivos
+`duplicate_request`, `outside_coverage`, `non_recoverable_material`.
+
+**Quién puede:** cualquier cuenta autenticada.
+""",
+}
+
+REJECT_COLLECTION_DOCS: dict[str, Any] = {
+    "summary": "Rechazar una solicitud de recolección",
+    "description": """
+La asociación rechaza una solicitud que le fue asignada y sigue en `pending_assignment`, con un motivo del
+catálogo (`reason_code`, ver `GET /collections/rejection-reasons`), nunca texto libre. La solicitud pasa a
+`rejected` y quien la pidió ve el motivo, y si puede corregirla, en su detalle.
+
+Errores: `422 rejection_reason_not_found` (código desconocido o desactivado), `409 collection_not_rejectable`
+(la solicitud ya no está en `pending_assignment`), `422 validation_error`.
+
+Queda auditado como `collection.rejected` (solo el código del motivo).
+
+**Quién puede:** el personal de la asociación con rol `association_admin` o `association_operator`
+(capacidad `collections.reject`), y solo sobre las solicitudes asignadas a su propia asociación; cualquier
+otra responde `404 collection_not_found`, igual que si no existiera. Otros roles reciben `403`.
 """,
 }

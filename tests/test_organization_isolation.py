@@ -262,8 +262,8 @@ class TestRegistrationStaysInside:
 
 
 class TestCollectionRequestsStayWithTheirRequester:
-    """Pickup requests are not tied to an organization yet: no ECA or Association reaches them, and one
-    citizen never reaches another's."""
+    """Reading and cancelling a pickup request is the requester's alone: no ECA or Association reaches them
+    there, and one citizen never reaches another's."""
 
     def test_no_organization_reaches_a_citizens_request(self, client_as, world, db):
         created = client_as(world.citizen).post("/collections", json={
@@ -277,6 +277,29 @@ class TestCollectionRequestsStayWithTheirRequester:
         neighbour = client_as(factories.make_user(db, "citizen"))
         assert neighbour.get(f"/collections/{created['id']}").status_code == 404
         assert neighbour.get("/collections").json()["total"] == 0
+
+
+class TestCollectionRequestsReachOnlyTheirAssociation:
+    """A request assigned to one association is rejected only by it; for any other it does not exist."""
+
+    def test_another_association_cannot_reject_it_and_an_eca_is_refused(self, client_as, world, db):
+        from app.domains.collections.models import Collection, CollectionStatus
+
+        created = client_as(world.citizen).post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = world.assoc_x.org.id
+        db.commit()
+        body = {"reason_code": "duplicate_request"}
+
+        for outsider in (world.assoc_y.admin, world.assoc_y.operator):
+            r = client_as(outsider).post(f"/collections/{created['id']}/reject", json=body)
+            assert r.status_code == 404 and r.json()["code"] == "collection_not_found"
+        for eca_staff in (world.eca_a.admin, world.eca_a.operator):
+            assert client_as(eca_staff).post(f"/collections/{created['id']}/reject", json=body).status_code == 403
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.pending_assignment
+
+        r = client_as(world.assoc_x.operator).post(f"/collections/{created['id']}/reject", json=body)
+        assert r.status_code == 200 and r.json()["status"] == "rejected"
 
 
 class TestIdempotencyKeysBelongToTheirAccount:

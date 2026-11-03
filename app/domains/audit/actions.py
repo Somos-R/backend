@@ -69,6 +69,7 @@ class Action:
     # --- Collection requests ---
     COLLECTION_REQUESTED = "collection.requested"
     COLLECTION_CANCELLED = "collection.cancelled"
+    COLLECTION_REJECTED = "collection.rejected"
 
     # --- Inventory ---
     INVENTORY_UPDATED = "inventory.updated"

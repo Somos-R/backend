@@ -1,21 +1,24 @@
 import uuid
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.spatial import point
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.collections.models import Collection, CollectionStatus
+from app.domains.collections.models import Collection, CollectionStatus, RejectionReason
 from app.domains.collections.schemas import (
     CancelCollectionRequest,
     CreateCollectionRequest,
+    RejectCollectionRequest,
 )
 from app.domains.inventory.service import ensure_material_is_active
+from app.domains.organizations.scope import collection_scope
 from app.domains.users.models import User
 
 # Colombia has no daylight saving time: "today" for a requester is always UTC-5.
@@ -29,6 +32,19 @@ def _local_today() -> date:
 def _not_found() -> ApiError:
     return ApiError("collection_not_found", status_code=status.HTTP_404_NOT_FOUND,
                     detail="Solicitud de recolección no encontrada")
+
+
+def _locked(db: Session, collection_id: uuid.UUID, *conditions) -> Collection:
+    """The request under a row lock, so a concurrent change of state cannot slip in; 404 outside `conditions`."""
+    collection = db.scalars(
+        select(Collection)
+        .where(Collection.id == collection_id, *conditions)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()
+    if collection is None:
+        raise _not_found()
+    return collection
 
 
 def _own_collection(db: Session, actor: User, collection_id: uuid.UUID) -> Collection:
@@ -70,7 +86,8 @@ def create_collection(db: Session, actor: User, request: CreateCollectionRequest
 def list_collections(
     db: Session, actor: User, *, status_: CollectionStatus | None, limit: int, offset: int,
 ) -> tuple[int, list[Collection]]:
-    query = select(Collection).where(Collection.requester_id == actor.id)
+    query = (select(Collection).where(Collection.requester_id == actor.id)
+             .options(selectinload(Collection.rejection_reason)))
     if status_ is not None:
         query = query.where(Collection.status == status_)
     return paginate(db, query, Collection.created_at.desc(), Collection.id.desc(), limit=limit, offset=offset)
@@ -83,15 +100,8 @@ def get_collection(db: Session, actor: User, collection_id: uuid.UUID) -> Collec
 def cancel_collection(
     db: Session, actor: User, collection_id: uuid.UUID, request: CancelCollectionRequest,
 ) -> Collection:
-    """Possible only while nobody has been assigned; a row lock keeps a concurrent assignment from slipping in."""
-    collection = db.scalars(
-        select(Collection)
-        .where(Collection.id == collection_id, Collection.requester_id == actor.id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    ).one_or_none()
-    if collection is None:
-        raise _not_found()
+    """Possible only while nobody has been assigned."""
+    collection = _locked(db, collection_id, Collection.requester_id == actor.id)
     if collection.status != CollectionStatus.pending_assignment:
         raise ApiError("collection_not_cancellable", status_code=status.HTTP_409_CONFLICT,
                        detail=f"Solo se puede cancelar una solicitud pendiente de asignación. "
@@ -101,6 +111,44 @@ def cancel_collection(
     collection.cancelled_at = datetime.now(timezone.utc)
     audit.record(db, Action.COLLECTION_CANCELLED, actor=actor, target_type="collection", target_id=collection.id,
                  details={"with_reason": request.reason is not None})
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
+def list_rejection_reasons(db: Session) -> Sequence[RejectionReason]:
+    """The active reasons, the ones the requester can correct first."""
+    return db.scalars(
+        select(RejectionReason)
+        .where(RejectionReason.is_active.is_(True))
+        .order_by(RejectionReason.is_correctable.desc(), RejectionReason.code)
+    ).all()
+
+
+def _active_reason(db: Session, code: str) -> RejectionReason:
+    reason = db.get(RejectionReason, code)
+    if reason is None or not reason.is_active:
+        raise ApiError("rejection_reason_not_found", status_code=422,
+                       detail=f"'{code}' no es un motivo de rechazo válido")
+    return reason
+
+
+def reject_collection(
+    db: Session, actor: User, collection_id: uuid.UUID, request: RejectCollectionRequest,
+) -> Collection:
+    """An association turns down a request assigned to it that no route has taken yet."""
+    collection = _locked(db, collection_id, collection_scope(actor))
+    reason = _active_reason(db, request.reason_code)
+    if collection.status != CollectionStatus.pending_assignment:
+        raise ApiError("collection_not_rejectable", status_code=status.HTTP_409_CONFLICT,
+                       detail=f"Solo se puede rechazar una solicitud pendiente de asignación. "
+                              f"Estado actual: {collection.status.value}")
+    collection.status = CollectionStatus.rejected
+    collection.rejection_reason = reason
+    collection.rejected_by = actor.id
+    collection.rejected_at = datetime.now(timezone.utc)
+    audit.record(db, Action.COLLECTION_REJECTED, actor=actor, target_type="collection", target_id=collection.id,
+                 details={"reason_code": reason.code})
     db.commit()
     db.refresh(collection)
     return collection

@@ -5,7 +5,8 @@ kept in one place so no endpoint can forget them:
 
 - **ECA staff** reach what happened in their own warehouses.
 - **Association staff** read the weighings and purchases of *their* recyclers, and the warehouses and
-  inventory of the ECAs their association is actively linked to (read only).
+  inventory of the ECAs their association is actively linked to (read only), and act on the pickup requests
+  assigned to their association.
 - Anyone without an organization reaches nothing (fail closed).
 
 Every function returns a SQL condition, so the same rule filters lists, totals, statistics and single
@@ -19,6 +20,7 @@ from sqlalchemy import ColumnElement, Select, and_, false, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.domains.collections.models import Collection
 from app.domains.inventory.models import Warehouse
 from app.domains.organizations.enums import LinkStatus
 from app.domains.organizations.models import EcaAssociationLink
@@ -103,6 +105,13 @@ def transaction_scope(actor: User) -> ColumnElement[bool]:
                 Weighing.affiliation_status == AffiliationStatus.linked,
                 Weighing.recycler_id.in_(own_recyclers(actor.organization_id))))
     return false()
+
+
+def collection_scope(actor: User) -> ColumnElement[bool]:
+    """Pickup requests an association acts on: only those assigned to it. No ECA reaches them."""
+    if actor.organization_id is None or actor.user_type_code != "association":
+        return false()
+    return Collection.association_id == actor.organization_id
 
 
 def recycler_linked_to(eca_id: uuid.UUID) -> ColumnElement[bool]:

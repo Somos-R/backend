@@ -53,6 +53,8 @@ PAYMENTS = frozenset({ECA_ADMIN, ASSOC_ADMIN})
 
 AUDIT_READ = frozenset({ASSOC_ADMIN})
 
+COLLECTIONS_REVIEW = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR})
+
 # Capabilities the clients ask about (GET /auth/me). Built from the same role groups that protect
 # the endpoints, so what the client is told can never drift from what the API enforces. Rule: a
 # capability exists only when an endpoint enforces it.
@@ -71,6 +73,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "transactions.manage": TRANSACTIONS_WRITE,
     "transactions.pay": PAYMENTS,
     "audit.view": AUDIT_READ,
+    "collections.reject": COLLECTIONS_REVIEW,  # POST /collections/{id}/reject
     "staff.invite": ORG_ADMINS,  # POST /users/invitations and .../invitation/resend
     "links.request": frozenset({ECA_ADMIN}),  # an ECA asks an Association to link
     "links.decide": frozenset({ASSOC_ADMIN}),  # the Association accepts or rejects
