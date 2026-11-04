@@ -22,11 +22,11 @@ EXPECTED = {
     "association_admin": {
         "recyclers.view", "recyclers.verify", "weighings.view", "weighings.review", "weighings.pay",
         "inventory.view", "transactions.view", "transactions.pay", "audit.view", "staff.invite", "staff.view", "staff.manage",
-        "links.decide", "links.view", "collections.reject",
+        "links.decide", "links.view", "collections.view", "collections.reject",
     },
     "association_operator": {
         "recyclers.view", "recyclers.verify", "weighings.view", "weighings.review", "inventory.view",
-        "collections.reject",
+        "collections.view", "collections.reject",
     },
     "route_manager": {"recyclers.view"},
     # Somos R's capabilities are not announced until a backoffice endpoint enforces them.

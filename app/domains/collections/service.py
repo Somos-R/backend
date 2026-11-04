@@ -93,6 +93,21 @@ def list_collections(
     return paginate(db, query, Collection.created_at.desc(), Collection.id.desc(), limit=limit, offset=offset)
 
 
+def list_association_inbox(
+    db: Session, actor: User, association_id: uuid.UUID, *, status_: CollectionStatus | None, limit: int, offset: int,
+) -> tuple[int, list[Collection]]:
+    """The requests assigned to the actor's own association, oldest first: the one waiting longest is reviewed
+    first. Any other association's id answers 404, as if it did not exist."""
+    if association_id != actor.organization_id:
+        raise ApiError("organization_not_found", status_code=status.HTTP_404_NOT_FOUND,
+                       detail="Organización no encontrada")
+    query = (select(Collection).where(collection_scope(actor))
+             .options(selectinload(Collection.rejection_reason)))
+    if status_ is not None:
+        query = query.where(Collection.status == status_)
+    return paginate(db, query, Collection.created_at.asc(), Collection.id.asc(), limit=limit, offset=offset)
+
+
 def get_collection(db: Session, actor: User, collection_id: uuid.UUID) -> Collection:
     return _own_collection(db, actor, collection_id)
 

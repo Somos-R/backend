@@ -91,3 +91,23 @@ Queda auditado como `collection.rejected` (solo el código del motivo).
 otra responde `404 collection_not_found`, igual que si no existiera. Otros roles reciben `403`.
 """,
 }
+
+ASSOCIATION_INBOX_DOCS: dict[str, Any] = {
+    "summary": "Bandeja de solicitudes de recolección de la asociación",
+    "description": """
+Lista paginada de las solicitudes asignadas a la asociación `association_id`, **de la más antigua a la más
+reciente** (la que lleva más tiempo esperando va primero). Filtro opcional `status` (`pending_assignment`,
+`assigned`, `rejected`, `cancelled`); para la bandeja de revisión, `status=pending_assignment`. Paginación con
+`limit` (1–100, por defecto 20) y `offset`. Responde `{"total", "items"}` con la misma forma de cada solicitud que
+`GET /collections` (dirección, coordenadas, materiales, notas, fecha programada y, si fue rechazada, su motivo).
+
+Aún no hay filtros por zona ni por escalado: llegan con la zona de la asociación y con el SLA de REC-04.
+
+Errores: `404 organization_not_found` (el `association_id` no es la asociación de quien consulta),
+`422 validation_error` (estado desconocido, `limit` fuera de rango).
+
+**Quién puede:** el personal de la asociación con rol `association_admin` o `association_operator`
+(capacidad `collections.view`), y solo sobre su propia asociación: el `id` de otra responde
+`404 organization_not_found`, igual que si no existiera. Otros roles reciben `403`.
+""",
+}

@@ -10,6 +10,7 @@ from app.core.rate_limit import limiter, register_limit
 from app.core.security import get_current_user, require_roles
 from app.domains.collections import service
 from app.domains.collections.docs import (
+    ASSOCIATION_INBOX_DOCS,
     CANCEL_COLLECTION_DOCS,
     CREATE_COLLECTION_DOCS,
     GET_COLLECTION_DOCS,
@@ -29,6 +30,8 @@ from app.domains.collections.schemas import (
 from app.domains.users.models import User
 
 router = APIRouter(prefix="/collections", tags=["collections"])
+# The association's side of the same requests: what reaches its staff to review.
+associations_router = APIRouter(prefix="/associations", tags=["collections"])
 
 REQUESTER_TYPES = frozenset({"citizen", "building"})
 
@@ -99,3 +102,18 @@ def reject_collection(
     actor: User = Depends(require_roles(*COLLECTIONS_REVIEW)),
 ):
     return service.reject_collection(db, actor, collection_id, body)
+
+
+@associations_router.get("/{association_id}/collections", response_model=CollectionListResponse,
+                         **ASSOCIATION_INBOX_DOCS)
+def list_association_inbox(
+    association_id: uuid.UUID,
+    status_: CollectionStatus | None = Query(default=None, alias="status"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*COLLECTIONS_REVIEW)),
+):
+    total, items = service.list_association_inbox(
+        db, actor, association_id, status_=status_, limit=limit, offset=offset)
+    return CollectionListResponse(total=total, items=items)

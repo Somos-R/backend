@@ -73,6 +73,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "transactions.manage": TRANSACTIONS_WRITE,
     "transactions.pay": PAYMENTS,
     "audit.view": AUDIT_READ,
+    "collections.view": COLLECTIONS_REVIEW,  # GET /associations/{id}/collections
     "collections.reject": COLLECTIONS_REVIEW,  # POST /collections/{id}/reject
     "staff.invite": ORG_ADMINS,  # POST /users/invitations and .../invitation/resend
     "links.request": frozenset({ECA_ADMIN}),  # an ECA asks an Association to link
