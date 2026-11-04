@@ -21,12 +21,15 @@ from app.domains.users.docs import (
     RECYCLER_LOOKUP_DOCS,
     RESEND_INVITATION_DOCS,
     SET_STAFF_STATUS_DOCS,
+    UPDATE_RECYCLER_LOCATION_DOCS,
     UPDATE_RECYCLER_STATUS_DOCS,
     UPDATE_USER_DOCS,
 )
 from app.domains.users.models import User
 from app.domains.users.schemas import (
     InviteStaffRequest,
+    RecyclerLocationRequest,
+    RecyclerLocationResponse,
     RecyclerLookupResponse,
     SetStaffActiveRequest,
     UpdateRecyclerStatusRequest,
@@ -49,6 +52,17 @@ def lookup_recycler(
     actor: User = Depends(require_roles(*WEIGHINGS_CREATE)),
 ):
     return users_service.lookup_recycler(db, actor, document, id_type)
+
+
+@recyclers_router.put("/{recycler_id}/location", response_model=RecyclerLocationResponse,
+                      **UPDATE_RECYCLER_LOCATION_DOCS)
+def update_recycler_location(
+    recycler_id: uuid.UUID,
+    body: RecyclerLocationRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    return users_service.update_recycler_location(db, actor, recycler_id, body)
 
 
 @router.get("", response_model=UserListResponse, **LIST_USERS_DOCS)
