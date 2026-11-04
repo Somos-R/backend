@@ -301,6 +301,26 @@ class TestCollectionRequestsReachOnlyTheirAssociation:
         r = client_as(world.assoc_x.operator).post(f"/collections/{created['id']}/reject", json=body)
         assert r.status_code == 200 and r.json()["status"] == "rejected"
 
+    def test_each_association_sees_only_its_own_inbox(self, client_as, world, db):
+        from app.domains.collections.models import Collection
+
+        created = client_as(world.citizen).post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = world.assoc_x.org.id
+        db.commit()
+        inbox_x = f"/associations/{world.assoc_x.org.id}/collections"
+
+        for outsider in (world.assoc_y.admin, world.assoc_y.operator):
+            r = client_as(outsider).get(inbox_x)
+            assert r.status_code == 404 and r.json()["code"] == "organization_not_found"
+            own = client_as(outsider).get(f"/associations/{world.assoc_y.org.id}/collections").json()
+            assert own["total"] == 0
+        for eca_staff in (world.eca_a.admin, world.eca_a.operator):
+            assert client_as(eca_staff).get(inbox_x).status_code == 403
+
+        r = client_as(world.assoc_x.operator).get(inbox_x)
+        assert r.status_code == 200 and [item["id"] for item in r.json()["items"]] == [created["id"]]
+
 
 class TestIdempotencyKeysBelongToTheirAccount:
     """A stored response is replayed only to the account that created it: another ECA reusing the same

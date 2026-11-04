@@ -1,5 +1,6 @@
-"""Pickup requests (B-1.1, REC-01): a citizen or a building asks, only they see their own, and they may cancel
-while nobody has been assigned; the association it is assigned to may reject it with a reason of the catalog."""
+"""Pickup requests (B-1.1, REC-01, REC-02): a citizen or a building asks, only they see their own, and they may
+cancel while nobody has been assigned; the association it is assigned to sees it in its inbox and may reject it
+with a reason of the catalog."""
 import uuid
 from datetime import timedelta
 
@@ -372,4 +373,116 @@ class TestReject:
         reject_more(2)
         few = measure()
         reject_more(9)
+        assert measure() == few
+
+
+def _inbox(client, association_id, **params):
+    return client.get(f"/associations/{association_id}/collections", params=params)
+
+
+def _created_ago(db, collection_id, hours: int) -> None:
+    """Requests made in one test share the transaction's now(): spread them in time by hand."""
+    collection = db.get(Collection, uuid.UUID(collection_id))
+    collection.created_at = collection.created_at - timedelta(hours=hours)
+    db.commit()
+
+
+class TestAssociationInbox:
+    def test_the_association_sees_its_requests_oldest_first(self, client_as, citizen, association_operator, db):
+        c = client_as(citizen)
+        newest = _assigned_to(c, db, association_operator)
+        oldest = _assigned_to(c, db, association_operator)
+        middle = _assigned_to(c, db, association_operator)
+        _created_ago(db, oldest["id"], 48)
+        _created_ago(db, middle["id"], 24)
+
+        r = _inbox(client_as(association_operator), association_operator.organization_id)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["total"] == 3
+        assert [item["id"] for item in body["items"]] == [oldest["id"], middle["id"], newest["id"]]
+        assert body["items"][0]["materials"] == BODY["materials"]
+        assert body["items"][0]["association_id"] == str(association_operator.organization_id)
+
+    def test_requests_of_nobody_or_of_another_association_are_left_out(
+        self, client_as, citizen, association_operator, db,
+    ):
+        c = client_as(citizen)
+        _create(c)  # assigned to no association yet
+        other = factories.make_user(db, "association", role_code="association_operator",
+                                    organization_id=factories.make_organization(db, "association").id)
+        _assigned_to(c, db, other)
+        mine = _assigned_to(c, db, association_operator)
+
+        body = _inbox(client_as(association_operator), association_operator.organization_id).json()
+        assert body["total"] == 1 and [item["id"] for item in body["items"]] == [mine["id"]]
+
+    def test_the_inbox_filters_by_status_and_paginates(self, client_as, citizen, association_operator, db):
+        c, operator = client_as(citizen), client_as(association_operator)
+        association_id = association_operator.organization_id
+        pending = [_assigned_to(c, db, association_operator) for _ in range(3)]
+        rejected = _assigned_to(c, db, association_operator)
+        assert _reject(operator, rejected["id"]).status_code == 200
+
+        only_rejected = _inbox(operator, association_id, status="rejected").json()
+        assert only_rejected["total"] == 1
+        assert only_rejected["items"][0]["rejection_reason"]["code"] == "incomplete_address"
+
+        page = _inbox(operator, association_id, status="pending_assignment", limit=2, offset=2).json()
+        assert page["total"] == 3 and len(page["items"]) == 1
+        assert page["items"][0]["id"] in {p["id"] for p in pending}
+
+    @pytest.mark.parametrize("params", [{"status": "lost"}, {"limit": 0}, {"limit": 101}, {"offset": -1}])
+    def test_invalid_filters_are_refused(self, client_as, association_operator, params):
+        r = _inbox(client_as(association_operator), association_operator.organization_id, **params)
+        assert r.status_code == 422
+
+    def test_an_admin_of_the_association_sees_it_too(self, client_as, citizen, association_operator, db):
+        admin = factories.make_user(db, "association", role_code="association_admin",
+                                    organization_id=association_operator.organization_id)
+        _assigned_to(client_as(citizen), db, association_operator)
+        assert _inbox(client_as(admin), admin.organization_id).json()["total"] == 1
+
+    def test_another_associations_id_does_not_exist(self, client_as, association_operator, db):
+        other = factories.make_organization(db, "association")
+        for association_id in (other.id, uuid.uuid4()):
+            r = _inbox(client_as(association_operator), association_id)
+            assert r.status_code == 404 and r.json()["code"] == "organization_not_found"
+
+    def test_staff_without_an_organization_reaches_nothing(self, client_as, db):
+        loose = factories.make_user(db, "association", role_code="association_operator")
+        r = _inbox(client_as(loose), uuid.uuid4())
+        assert r.status_code == 404 and r.json()["code"] == "organization_not_found"
+
+    @pytest.mark.parametrize("kind", ["citizen", "eca_admin", "recycler"])
+    def test_only_association_admins_and_operators_may_read_it(self, client_as, db, kind):
+        user = (factories.make_user(db, "eca", role_code="eca_admin") if kind == "eca_admin"
+                else factories.make_user(db, kind))
+        assert _inbox(client_as(user), uuid.uuid4()).status_code == 403
+
+    def test_a_token_is_required(self, client):
+        assert _inbox(client, uuid.uuid4()).status_code == 401
+
+    def test_the_inbox_costs_the_same_queries_for_few_and_many(
+        self, client_as, citizen, association_operator, db, count_queries,
+    ):
+        c, operator = client_as(citizen), client_as(association_operator)
+        association_id = association_operator.organization_id  # read before expunge_all() detaches it
+
+        def assign_and_reject(n):
+            for _ in range(n):
+                created = _create(c).json()
+                db.get(Collection, uuid.UUID(created["id"])).association_id = association_id
+                db.commit()
+                assert _reject(operator, created["id"]).status_code == 200
+
+        def measure():
+            db.expunge_all()
+            with count_queries() as statements:
+                assert _inbox(operator, association_id).status_code == 200
+            return len(statements)
+
+        assign_and_reject(2)
+        few = measure()
+        assign_and_reject(9)
         assert measure() == few
