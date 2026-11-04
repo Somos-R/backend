@@ -440,6 +440,24 @@ class TestBusinessEvents:
         cancelled = only(db, Action.COLLECTION_CANCELLED)
         assert cancelled.target_id == created["id"] and cancelled.details == {"with_reason": True}
 
+    def test_collection_rejection_records_only_the_reason_code(self, client_as, citizen, db):
+        from app.domains.collections.models import Collection
+
+        operator = factories.make_actor(db, "association_operator")
+        created = client_as(citizen).post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = operator.organization_id
+        db.commit()
+        reject = client_as(operator).post(f"/collections/{created['id']}/reject", json={"reason_code": "invalid_contact"})
+        assert reject.status_code == 200, reject.text
+        rejected = only(db, Action.COLLECTION_REJECTED)
+        assert rejected.actor_id == operator.id and rejected.target_id == created["id"]
+        assert rejected.details == {"reason_code": "invalid_contact"}
+
+        assert client_as(operator).post(
+            f"/collections/{created['id']}/reject", json={"reason_code": "invalid_contact"}).status_code == 409
+        assert len(rows(db, Action.COLLECTION_REJECTED)) == 1
+
     def test_a_refused_collection_cancel_records_nothing(self, client_as, citizen, db):
         c = client_as(citizen)
         created = c.post("/collections", json={

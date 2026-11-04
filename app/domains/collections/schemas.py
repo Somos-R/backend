@@ -9,6 +9,14 @@ from app.domains.collections.models import CollectionStatus
 MAX_MATERIALS = 10
 
 
+class RejectionReasonResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code:           str
+    label:          str
+    is_correctable: bool
+
+
 class CollectionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -23,6 +31,9 @@ class CollectionResponse(BaseModel):
     scheduled_date:      date | None
     cancellation_reason: str | None
     cancelled_at:        datetime | None
+    association_id:      uuid.UUID | None
+    rejection_reason:    RejectionReasonResponse | None
+    rejected_at:         datetime | None
     created_at:          datetime
     updated_at:          datetime
 
@@ -66,3 +77,11 @@ class CreateCollectionRequest(BaseModel):
 
 class CancelCollectionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=200)
+
+
+class RejectCollectionRequest(BaseModel):
+    """A code of the `rejection_reasons` catalog: never free text."""
+
+    reason_code: str = Field(min_length=1, max_length=40)
+
+    model_config = ConfigDict(json_schema_extra={"examples": [{"reason_code": "incomplete_address"}]})
