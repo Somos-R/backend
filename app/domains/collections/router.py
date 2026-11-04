@@ -30,12 +30,10 @@ from app.domains.users.models import User
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
-REQUESTER_TYPES = frozenset({"citizen", "building"})
-
 
 def get_requester(user: User = Depends(get_current_user)) -> User:
     """Who generates the material asks for it to be picked up: a citizen or a building."""
-    if user.user_type_code in REQUESTER_TYPES:
+    if service.can_request(user):
         return user
     raise forbidden("Solo ciudadanos y edificios pueden solicitar recolección", "collections_requesters_only")
 

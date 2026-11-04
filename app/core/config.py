@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     # --- Lists that are not paginated ---
     weighings_full_list_max_rows: int = 10_000  # the most GET /weighings/all returns (the newest ones); `truncated` says so
 
+    sync_batch_max_items: int = 200  # the most operations POST /sync/batch takes in one request
+
     # --- Private storage for uploaded documents ---
     storage_backend: str = "local"  # only "local" exists; production needs one that survives a deploy
     storage_local_dir: str = ".storage"  # directory for the local backend (never commit it)

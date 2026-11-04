@@ -25,6 +25,14 @@ from app.domains.users.models import User
 LOCAL_TIMEZONE = timezone(timedelta(hours=-5))
 
 
+# Who generates the material asks for it to be picked up: a citizen or a building.
+REQUESTER_TYPES = frozenset({"citizen", "building"})
+
+
+def can_request(actor: User) -> bool:
+    return actor.user_type_code in REQUESTER_TYPES
+
+
 def _local_today() -> date:
     return datetime.now(LOCAL_TIMEZONE).date()
 

@@ -36,6 +36,7 @@ from app.domains.catalogs.router import router as catalogs_router
 from app.domains.collections.router import router as collections_router
 from app.domains.inventory.router import router as inventory_router
 from app.domains.organizations.router import router as organizations_router
+from app.domains.sync.router import router as sync_router
 from app.domains.transactions.router import router as transactions_router
 from app.domains.users.router import recyclers_router
 from app.domains.users.router import router as users_router
@@ -108,6 +109,7 @@ def create_app() -> FastAPI:
     app.include_router(weighings_router)
     app.include_router(transactions_router)
     app.include_router(collections_router)
+    app.include_router(sync_router)
     app.include_router(organizations_router)
     app.include_router(applications_router)
     app.include_router(audit_router)
