@@ -467,3 +467,25 @@ class TestFullWeighingListScope:
         other_recycler = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
         assert self._all(client_as, other_recycler)[0] == set()
         assert self._all(client_as, world.recycler)[0] == set(delivered.ids)
+
+
+class TestEcaRoutingProfileScope:
+    """`/ecas/me/routing-profile` only ever reaches the caller's own ECA."""
+
+    PROFILE = {
+        "latitude": "4.5981", "longitude": "-74.0758", "accepted_materials": ["paper"],
+        "reception_hours": [{"day": "monday", "opens_at": "08:00", "closes_at": "12:00"}]}
+
+    def test_one_eca_declaring_its_profile_leaves_the_other_untouched(self, client_as, world):
+        r = client_as(world.eca_a.admin).put("/ecas/me/routing-profile", json=self.PROFILE)
+        assert r.status_code == 200 and r.json()["organization_id"] == str(world.eca_a.org.id)
+
+        other = client_as(world.eca_b.admin).get("/ecas/me/routing-profile").json()
+        assert other["organization_id"] == str(world.eca_b.org.id) and other["accepted_materials"] is None
+        assert client_as(world.eca_a.operator).get("/ecas/me/routing-profile").json()["accepted_materials"] == ["paper"]
+
+    def test_an_association_reaches_no_ecas_profile(self, client_as, world):
+        client_as(world.eca_a.admin).put("/ecas/me/routing-profile", json=self.PROFILE)
+        for user in (world.assoc_x.admin, world.assoc_x.operator):
+            assert client_as(user).get("/ecas/me/routing-profile").status_code == 403
+            assert client_as(user).put("/ecas/me/routing-profile", json=self.PROFILE).status_code == 403

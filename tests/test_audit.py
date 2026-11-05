@@ -458,6 +458,23 @@ class TestBusinessEvents:
             f"/collections/{created['id']}/reject", json={"reason_code": "invalid_contact"}).status_code == 409
         assert len(rows(db, Action.COLLECTION_REJECTED)) == 1
 
+    def test_eca_routing_profile_update_records_materials_but_never_coordinates(self, client_as, eca_admin, db):
+        r = client_as(eca_admin).put("/ecas/me/routing-profile", json={
+            "latitude": "4.5981", "longitude": "-74.0758", "accepted_materials": ["paper"],
+            "reception_hours": [{"day": "monday", "opens_at": "08:00", "closes_at": "12:00"}]})
+        assert r.status_code == 200, r.text
+        entry = only(db, Action.ECA_ROUTING_PROFILE_UPDATED)
+        assert entry.actor_id == eca_admin.id and entry.target_type == "organization"
+        assert entry.target_id == str(eca_admin.organization_id)
+        assert entry.details == {"accepted_materials": ["paper"], "reception_windows": 1}
+        assert "4.5981" not in json.dumps(entry.details)
+
+    def test_a_refused_eca_routing_profile_update_records_nothing(self, client_as, eca_admin, db):
+        client_as(eca_admin).put("/ecas/me/routing-profile", json={
+            "latitude": "4.5981", "longitude": "-74.0758", "accepted_materials": ["kryptonite"],
+            "reception_hours": [{"day": "monday", "opens_at": "08:00", "closes_at": "12:00"}]})
+        assert rows(db, Action.ECA_ROUTING_PROFILE_UPDATED) == []
+
     def test_a_refused_collection_cancel_records_nothing(self, client_as, citizen, db):
         c = client_as(citizen)
         created = c.post("/collections", json={
