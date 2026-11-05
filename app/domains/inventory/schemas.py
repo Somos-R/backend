@@ -5,6 +5,16 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+def unique_material_codes(codes: list[str]) -> list[str]:
+    """Each material once, in the order given; a code never longer than the catalog allows (`materials.code`).
+
+    Shape only: whether each code exists and is active is checked against the catalog by `ensure_material_is_active`.
+    """
+    if any(not code or len(code) > 30 for code in codes):
+        raise ValueError("Cada material debe ser un código de 1 a 30 caracteres")
+    return list(dict.fromkeys(codes))
+
+
 class MaterialResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     code:  str

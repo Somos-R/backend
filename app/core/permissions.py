@@ -55,6 +55,9 @@ AUDIT_READ = frozenset({ASSOC_ADMIN})
 
 COLLECTIONS_REVIEW = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR})
 
+ECA_ROUTING_PROFILE_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE})
+ECA_ROUTING_PROFILE_WRITE = frozenset({ECA_ADMIN})
+
 # Capabilities the clients ask about (GET /auth/me). Built from the same role groups that protect
 # the endpoints, so what the client is told can never drift from what the API enforces. Rule: a
 # capability exists only when an endpoint enforces it.
@@ -81,6 +84,8 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "links.view": ORG_ADMINS,  # see the links of your own organization (either side may remove one)
     "staff.view": ORG_ADMINS,  # only admins see their organization's staff (visible_user_types)
     "staff.manage": ORG_ADMINS,  # PATCH /users/{id}/status: deactivate or reactivate your own staff
+    "eca_routing_profile.view": ECA_ROUTING_PROFILE_READ,  # GET /ecas/me/routing-profile
+    "eca_routing_profile.edit": ECA_ROUTING_PROFILE_WRITE,  # PUT /ecas/me/routing-profile
 }
 
 # What Somos R's own roles may do, by capability. Endpoints of the backoffice ask for a capability,

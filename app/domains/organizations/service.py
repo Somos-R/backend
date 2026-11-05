@@ -6,6 +6,7 @@ Each function that changes data is a unit of work: it commits and audits.
 """
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from fastapi import status
 from sqlalchemy import select
@@ -14,15 +15,23 @@ from sqlalchemy.orm import Session, selectinload
 from app.core import search
 from app.core.errors import ApiError
 from app.core.pagination import paginate
+from app.core.spatial import latitude_longitude, point
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
+from app.domains.inventory.service import ensure_material_is_active
 from app.domains.organizations.enums import (
     LinkStatus,
     OrganizationStatus,
     OrganizationType,
 )
 from app.domains.organizations.models import EcaAssociationLink, Organization
+from app.domains.organizations.schemas import (
+    EcaRoutingProfileRequest,
+    EcaRoutingProfileResponse,
+)
 from app.domains.users.models import User
+
+COORDINATE_DECIMALS = 6  # the precision the request accepts; reading the point back must not invent more
 
 
 def _own_organization(db: Session, actor: User, expected: OrganizationType | None = None) -> Organization:
@@ -169,3 +178,40 @@ def _reload(db: Session, link_id: uuid.UUID) -> EcaAssociationLink:
     return db.scalars(select(EcaAssociationLink).where(EcaAssociationLink.id == link_id).options(
         selectinload(EcaAssociationLink.eca), selectinload(EcaAssociationLink.association))).one()
 
+
+
+# --- ECA routing profile ------------------------------------------------------------------
+
+def _routing_profile(db: Session, eca: Organization) -> EcaRoutingProfileResponse:
+    latitude, longitude = (None, None) if eca.location is None else db.execute(
+        select(*latitude_longitude(Organization.location)).where(Organization.id == eca.id)).one()
+    return EcaRoutingProfileResponse(
+        organization_id=eca.id,
+        latitude=None if latitude is None else round(Decimal(latitude), COORDINATE_DECIMALS),
+        longitude=None if longitude is None else round(Decimal(longitude), COORDINATE_DECIMALS),
+        reception_hours=eca.reception_hours,
+        accepted_materials=eca.accepted_materials,
+        updated_at=eca.updated_at,
+    )
+
+
+def get_routing_profile(db: Session, actor: User) -> EcaRoutingProfileResponse:
+    """The routing data of the actor's own ECA: there is no way to name another one."""
+    return _routing_profile(db, _own_organization(db, actor, OrganizationType.eca))
+
+
+def update_routing_profile(db: Session, actor: User, request: EcaRoutingProfileRequest) -> EcaRoutingProfileResponse:
+    """Replaces the whole profile of the actor's own ECA. Every material must be active in the catalog."""
+    eca = _own_organization(db, actor, OrganizationType.eca)
+    for code in request.accepted_materials:
+        ensure_material_is_active(db, code)
+    eca.location = point(request.latitude, request.longitude)
+    eca.reception_hours = [window.model_dump(mode="json") for window in request.reception_hours]
+    eca.accepted_materials = request.accepted_materials
+    # Material codes and how many windows; the address-level coordinates stay out of the trail.
+    audit.record(db, Action.ECA_ROUTING_PROFILE_UPDATED, actor=actor, target_type="organization", target_id=eca.id,
+                 details={"accepted_materials": request.accepted_materials,
+                          "reception_windows": len(request.reception_hours)})
+    db.commit()
+    db.refresh(eca)
+    return _routing_profile(db, eca)

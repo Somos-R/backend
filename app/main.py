@@ -38,6 +38,7 @@ from app.domains.collections.router import (
 )
 from app.domains.collections.router import router as collections_router
 from app.domains.inventory.router import router as inventory_router
+from app.domains.organizations.router import ecas_router
 from app.domains.organizations.router import router as organizations_router
 from app.domains.transactions.router import router as transactions_router
 from app.domains.users.router import recyclers_router
@@ -113,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(collections_router)
     app.include_router(collection_inbox_router)
     app.include_router(organizations_router)
+    app.include_router(ecas_router)
     app.include_router(applications_router)
     app.include_router(audit_router)
     app.include_router(admin_router)

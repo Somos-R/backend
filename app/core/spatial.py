@@ -8,7 +8,7 @@ column in a function or a cast would not).
 from decimal import Decimal
 from typing import Any
 
-from geoalchemy2 import Geography
+from geoalchemy2 import Geography, Geometry
 from sqlalchemy import ColumnElement, Float, cast, func
 from sqlalchemy.orm import QueryableAttribute
 
@@ -23,6 +23,12 @@ def point(latitude: float | Decimal, longitude: float | Decimal) -> ColumnElemen
     """A WGS 84 geography point. Usable as a value to store and as the other side of any helper below."""
     return cast(func.ST_SetSRID(func.ST_MakePoint(longitude, latitude), 4326),
                 Geography(geometry_type="POINT", srid=4326))
+
+
+def latitude_longitude(location: SpatialExpression) -> tuple[ColumnElement[float], ColumnElement[float]]:
+    """A stored point read back as (latitude, longitude) in degrees, to select alongside the row."""
+    as_geometry = cast(location, Geometry(geometry_type="POINT", srid=4326))
+    return func.ST_Y(as_geometry, type_=Float), func.ST_X(as_geometry, type_=Float)
 
 
 def within_radius(location: SpatialExpression, center: SpatialExpression, meters: float) -> ColumnElement[bool]:

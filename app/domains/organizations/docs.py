@@ -75,3 +75,41 @@ solicitud mientras no tenga respuesta. El vínculo queda `removed` (no se borra 
 {_PARTIES}
 """,
 }
+
+_ROUTING_PROFILE = """
+Son los datos de la ECA que usa el cálculo de rutas (RUT-01): su **ubicación** (punto de entrega donde cierran
+las rutas), su **horario de recepción** y los **materiales que recibe**. Cada parte es `null` hasta que la ECA
+la declara.
+
+Siempre es la ECA de quien llama: no hay forma de nombrar otra organización. Errores comunes:
+`403 no_organization` (la cuenta no tiene organización), `403 organization_not_active` (la ECA no está aprobada)."""
+
+GET_ECA_ROUTING_PROFILE_DOCS: dict[str, Any] = {
+    "summary": "Datos de ruta de mi ECA",
+    "description": f"""
+Devuelve la ubicación, el horario de recepción y los materiales que recibe tu ECA.
+
+**Quién puede:** personal de ECA (`eca_admin`, `eca_operator`, `eca_warehouse`); capacidad
+`eca_routing_profile.view`.
+{_ROUTING_PROFILE}
+""",
+}
+
+UPDATE_ECA_ROUTING_PROFILE_DOCS: dict[str, Any] = {
+    "summary": "Actualizar los datos de ruta de mi ECA",
+    "description": f"""
+**Reemplaza** el perfil completo (todos los campos son obligatorios):
+
+- `latitude` / `longitude`: grados WGS 84, hasta 6 decimales.
+- `reception_hours`: de 1 a 21 franjas `{{"day", "opens_at", "closes_at"}}`. `day` es `monday` … `sunday`; las
+  horas van en `HH:MM` (24 h, hora de Colombia) y la apertura debe ser anterior al cierre. Un día puede tener
+  varias franjas (p. ej. con pausa de almuerzo); se pueden tocar pero no cruzar. Se devuelven ordenadas por día
+  y hora.
+- `accepted_materials`: de 1 a 20 códigos **activos** del catálogo de materiales (los repetidos se ignoran).
+  `404 material_not_found`, `400 material_inactive`.
+
+**Quién puede:** administradores de ECA (`eca_admin`); capacidad `eca_routing_profile.edit`. El cambio queda
+auditado (`eca.routing_profile_updated`, con los códigos de material y cuántas franjas, sin coordenadas).
+{_ROUTING_PROFILE}
+""",
+}
