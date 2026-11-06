@@ -109,6 +109,11 @@ class TestPasswordStep:
         assert wrong.json() == unknown.json() == customer.json()
         assert wrong.json()["code"] == "invalid_credentials"
 
+    def test_email_case_and_surrounding_spaces_are_ignored(self, client, admin):
+        r = client.post("/admin/auth/login", json={"email": f" {admin.email.upper()}  ", "password": PASSWORD})
+        assert r.status_code == 200
+        assert r.json()["mfa_status"] == "enrollment_required"
+
     def test_the_real_reasons_are_in_the_audit_trail(self, client, db, admin, eca_admin):
         _login(client, admin, "incorrecta-1234")
         _login(client, eca_admin)

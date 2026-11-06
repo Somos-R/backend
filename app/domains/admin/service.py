@@ -67,7 +67,7 @@ def _fail(db: Session, user: User | None, action: str, reason: str) -> None:
 # --- Step 1: password ---------------------------------------------------------------
 
 def start_login(db: Session, email: str, password: str) -> dict:
-    user = db.scalars(select(User).where(func.lower(User.email) == email.strip().lower())).first()
+    user = db.scalars(select(User).where(func.lower(User.email) == email)).first()
 
     # One bcrypt comparison whatever the case, so timing does not say which one it is. Only Somos R
     # accounts sign in here; a customer answers exactly like an unknown address.
