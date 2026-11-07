@@ -469,6 +469,50 @@ class TestFullWeighingListScope:
         assert self._all(client_as, world.recycler)[0] == set(delivered.ids)
 
 
+class TestSyncBatchStaysInItsOrganization:
+    """`POST /sync/batch` creates through the same services as the endpoints: it never writes into, nor answers with,
+    another organization's data."""
+
+    @pytest.fixture
+    def warehouse_of_a(self, db, world):
+        from app.domains.inventory.models import Warehouse
+
+        warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+        warehouse.organization_id = world.eca_a.org.id
+        db.commit()
+        return warehouse
+
+    @staticmethod
+    def _operation(world, warehouse):
+        return {"type": "weighing", "idempotency_key": str(uuid.uuid4()), "client_created_at": "2026-11-03T09:00:00Z",
+                "payload": {"recycler_id": str(world.recycler.id), "material_code": "plastic",
+                            "warehouse_id": str(warehouse.id), "kg": "10", "price_per_kg": "400"}}
+
+    def test_another_eca_cannot_weigh_into_a_warehouse_that_is_not_its_own(self, client_as, db, world, warehouse_of_a):
+        from app.domains.weighings.models import Weighing
+
+        r = client_as(world.eca_b.admin).post(
+            "/sync/batch", json={"operations": [self._operation(world, warehouse_of_a)]})
+        assert r.status_code == 200
+        result = r.json()["results"][0]
+        assert result["status"] == "error" and result["record"] is None
+        assert db.query(Weighing).count() == 0
+
+    def test_the_owning_eca_can(self, client_as, world, warehouse_of_a):
+        r = client_as(world.eca_a.admin).post(
+            "/sync/batch", json={"operations": [self._operation(world, warehouse_of_a)]})
+        assert r.json()["results"][0]["status"] == "created"
+
+    def test_the_same_key_in_two_organizations_never_returns_the_others_record(self, client_as, db, world, warehouse_of_a):
+        """Keys belong to the account: B reusing A's key neither sees A's weighing nor is told it exists."""
+        operation = self._operation(world, warehouse_of_a)
+        created = client_as(world.eca_a.admin).post("/sync/batch", json={"operations": [operation]}).json()
+        other = client_as(world.eca_b.admin).post("/sync/batch", json={"operations": [operation]}).json()
+        assert created["results"][0]["status"] == "created"
+        assert other["results"][0]["status"] == "error"
+        assert other["results"][0]["record"] is None
+
+
 class TestNearbyAndLocationStayInScope:
     """The map endpoints never reach across organizations or across people."""
 
