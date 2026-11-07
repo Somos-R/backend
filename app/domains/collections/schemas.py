@@ -38,6 +38,15 @@ class CollectionResponse(BaseModel):
     updated_at:          datetime
 
 
+class NearbyCollectionResponse(CollectionResponse):
+    distance_meters: float  # straight line from the point asked for, on the spheroid
+
+
+class NearbyCollectionListResponse(BaseModel):
+    total: int  # all inside the radius, not just this page
+    items: list[NearbyCollectionResponse]
+
+
 class CollectionListResponse(BaseModel):
     total: int
     items: list[CollectionResponse]

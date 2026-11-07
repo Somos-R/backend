@@ -129,6 +129,7 @@ def _plan(db, statement: Select) -> str:
 INDEXED_POINTS = [
     pytest.param(Collection.location, Collection.id, "ix_collections_location", id="collections"),
     pytest.param(User.start_location, User.id, "ix_users_start_location", id="recyclers"),
+    pytest.param(User.current_location, User.id, "ix_users_current_location", id="recyclers-now"),
     pytest.param(Organization.location, Organization.id, "ix_organizations_location", id="ecas"),
 ]
 

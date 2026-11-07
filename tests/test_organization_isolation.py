@@ -467,3 +467,29 @@ class TestFullWeighingListScope:
         other_recycler = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
         assert self._all(client_as, other_recycler)[0] == set()
         assert self._all(client_as, world.recycler)[0] == set(delivered.ids)
+
+
+class TestNearbyAndLocationStayInScope:
+    """The map endpoints never reach across organizations or across people."""
+
+    def test_an_association_never_sees_the_pickups_assigned_to_another_one(self, client_as, db, world):
+        from app.domains.collections.models import Collection
+
+        c = client_as(factories.make_user(db, "citizen"))
+        collection_id = c.post("/collections", json={
+            "address": "Calle 1 # 2-3", "latitude": "4.47", "longitude": "-74.13", "materials": ["paper"]}).json()["id"]
+        db.get(Collection, collection_id).association_id = world.assoc_x.org.id
+        db.commit()
+        params = {"lat": 4.47, "lng": -74.13, "radius": 5000}
+        assert client_as(world.assoc_x.operator).get("/collections/nearby", params=params).json()["total"] == 1
+        assert client_as(world.assoc_y.operator).get("/collections/nearby", params=params).json()["total"] == 0
+
+    def test_an_eca_gets_no_pickups_at_all(self, client_as, world):
+        r = client_as(world.eca_a.admin).get("/collections/nearby", params={"lat": 4.47, "lng": -74.13})
+        assert r.status_code == 403
+
+    def test_a_recycler_cannot_move_another_recyclers_location(self, client_as, db, world):
+        other = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
+        for user in (other, world.assoc_x.admin, world.eca_a.admin):
+            r = client_as(user).put(f"/recyclers/{world.recycler.id}/location", json={"latitude": "4.5", "longitude": "-74.1"})
+            assert r.status_code == 403
