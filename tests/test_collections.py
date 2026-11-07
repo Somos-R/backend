@@ -534,3 +534,66 @@ class TestAssignmentToTheAssociation:
                                  "materials": ["paper"]}}
         record = client_as(citizen).post("/sync/batch", json={"operations": [operation]}).json()["results"][0]["record"]
         assert record["association_id"] == str(association_operator.organization_id)
+
+
+class TestDailyLimit:
+    """One account cannot flood the associations' inbox, whatever address it uses."""
+
+    @pytest.fixture(autouse=True)
+    def _small_limit(self, monkeypatch):
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "collections_max_per_day", 3)
+
+    def test_the_request_over_the_limit_is_a_429(self, client_as, citizen, db):
+        client = client_as(citizen)
+        assert [_create(client, address=f"Calle {i}").status_code for i in range(3)] == [201, 201, 201]
+        r = _create(client, address="Calle 4")
+        assert r.status_code == 429 and r.json()["code"] == "collections_daily_limit"
+        assert db.query(Collection).count() == 3
+
+    def test_cancelled_requests_still_count(self, client_as, citizen):
+        client = client_as(citizen)
+        for i in range(3):
+            created = _create(client, address=f"Calle {i}").json()
+            assert client.patch(f"/collections/{created['id']}/cancel").status_code == 200
+        assert _create(client).status_code == 429
+
+    def test_each_account_has_its_own_allowance(self, client_as, citizen, db):
+        for i in range(3):
+            _create(client_as(citizen), address=f"Calle {i}")
+        other = factories.make_user(db, "citizen")
+        assert _create(client_as(other)).status_code == 201
+
+    def test_requests_older_than_a_day_do_not_count(self, client_as, citizen, db):
+        from datetime import datetime, timezone
+        client = client_as(citizen)
+        for i in range(3):
+            _create(client, address=f"Calle {i}")
+        for collection in db.query(Collection).all():
+            collection.created_at = datetime.now(timezone.utc) - timedelta(hours=25)
+        db.commit()
+        assert _create(client).status_code == 201
+
+    def test_a_retry_with_the_same_key_is_not_counted_twice(self, client_as, citizen, db):
+        client = client_as(citizen)
+        key = {"Idempotency-Key": str(uuid.uuid4())}
+        body = {"address": "Calle 1", "latitude": "4.47", "longitude": "-74.13", "materials": ["paper"]}
+        for _ in range(5):
+            assert client.post("/collections", json=body, headers=key).status_code == 201
+        assert db.query(Collection).count() == 1
+        assert _create(client, address="Calle 2").status_code == 201
+
+    def test_the_offline_batch_cannot_get_round_it(self, client_as, citizen, db):
+        from datetime import datetime, timezone
+        operations = [{"type": "collection", "idempotency_key": str(uuid.uuid4()),
+                       "client_created_at": datetime(2026, 11, 3, 9, i, tzinfo=timezone.utc).isoformat(),
+                       "payload": {"address": f"Calle {i}", "latitude": "4.47", "longitude": "-74.13",
+                                   "materials": ["paper"]}} for i in range(5)]
+        results = client_as(citizen).post("/sync/batch", json={"operations": operations}).json()["results"]
+        assert [r["status"] for r in results] == ["created"] * 3 + ["error"] * 2
+        assert results[3]["error"]["code"] == "collections_daily_limit"
+        assert db.query(Collection).count() == 3
+
+    def test_the_default_is_twenty_a_day(self, monkeypatch):
+        from app.core.config import Settings
+        assert Settings.model_fields["collections_max_per_day"].default == 20

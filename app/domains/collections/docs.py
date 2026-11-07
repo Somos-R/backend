@@ -17,7 +17,9 @@ el cuerpo no lleva `citizen_id` ni `requester_id`.
   `cardboard`, `electronic`, `organic`); los repetidos se ignoran.
 - `scheduled_date` (opcional): no puede ser anterior a hoy (hora de Colombia).
 
-Errores: `404 material_not_found`, `400 material_inactive`, `422 scheduled_date_in_past`, `422 validation_error`.
+Errores: `404 material_not_found`, `400 material_inactive`, `422 scheduled_date_in_past`, `422 validation_error`,
+`429 collections_daily_limit` (la cuenta ya creó 20 solicitudes en las últimas 24 horas, contando las canceladas y
+rechazadas; los reintentos con la misma `Idempotency-Key` no cuentan).
 
 **Reintentos sin duplicar:** la cabecera opcional `Idempotency-Key` (un UUID que el cliente genera al crear la
 solicitud y repite en cada reintento) hace que un reintento devuelva la respuesta original, sin crear otra
