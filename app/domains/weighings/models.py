@@ -78,6 +78,9 @@ class Weighing(Base):
     occurred_at:            Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     # SHA-256 of what was recorded at registration (see integrity.py). Null only for weighings that predate it.
     record_hash:      Mapped[str | None]      = mapped_column(String(64), nullable=True)
+    # When the device saved it, if it arrived through POST /sync/batch. The device's clock: a fact about the record,
+    # not its date (that is `occurred_at`), and not part of the hash.
+    client_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

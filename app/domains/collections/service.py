@@ -97,7 +97,9 @@ def _ensure_under_daily_limit(db: Session, actor: User) -> None:
                        detail="Alcanzaste el máximo de solicitudes de recolección por día. Intenta más tarde")
 
 
-def create_collection(db: Session, actor: User, request: CreateCollectionRequest) -> Collection:
+def create_collection(
+    db: Session, actor: User, request: CreateCollectionRequest, client_created_at: datetime | None = None,
+) -> Collection:
     _ensure_under_daily_limit(db, actor)
     if request.scheduled_date is not None and request.scheduled_date < _local_today():
         raise ApiError("scheduled_date_in_past", status_code=422,
@@ -116,6 +118,7 @@ def create_collection(db: Session, actor: User, request: CreateCollectionRequest
         materials=request.materials,
         notes=request.notes,
         scheduled_date=request.scheduled_date,
+        client_created_at=client_created_at,
     )
     db.add(collection)
     db.flush()

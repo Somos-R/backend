@@ -9,6 +9,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import status
@@ -35,6 +36,9 @@ from app.domains.weighings.schemas import CreateWeighingRequest, WeighingRespons
 
 logger = logging.getLogger(__name__)
 
+# A device clock a little ahead of ours is normal; one far ahead is a wrong clock and would be stored as a fact.
+MAX_CLOCK_SKEW = timedelta(minutes=5)
+
 
 @dataclass(frozen=True)
 class _Handler:
@@ -44,7 +48,7 @@ class _Handler:
     request_model: type[BaseModel]
     response_model: type[BaseModel]
     ensure_allowed: Callable[[User], None]
-    create: Callable[[Session, User, Any], object]
+    create: Callable[[Session, User, Any, datetime], object]  # (db, actor, body, when the device saved it)
 
 
 def _ensure_may_weigh(actor: User) -> None:
@@ -76,6 +80,8 @@ def _process(db: Session, actor: User, index: int, operation: SyncOperation) -> 
     handler = _HANDLERS[operation.type]
     try:
         handler.ensure_allowed(actor)
+        if operation.client_created_at > datetime.now(timezone.utc) + MAX_CLOCK_SKEW:
+            raise ApiError("timestamp_in_future", status_code=422, detail="La hora en que se guardó está en el futuro")
         body = handler.request_model.model_validate(operation.payload)
     except ApiError as exc:
         return _failed(index, operation, exc.code, exc.detail)
@@ -87,7 +93,7 @@ def _process(db: Session, actor: User, index: int, operation: SyncOperation) -> 
     def create() -> object:
         nonlocal created_here
         created_here = True
-        return handler.create(db, actor, body)
+        return handler.create(db, actor, body, operation.client_created_at)
 
     try:
         answer = create_once(

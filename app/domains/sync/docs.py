@@ -18,8 +18,12 @@ permisos y reglas, y con idempotencia.
 - **Tipos:** `weighing` y `collection`. (Los estados de parada se agregan cuando existan las rutas.)
 - **`idempotency_key`:** un UUID que el dispositivo genera al guardar el registro y repite en cada reintento. Es la
   misma clave que acepta la cabecera `Idempotency-Key` de los endpoints: una clave usada en uno se reconoce en el otro.
-- **`client_created_at`:** cuándo lo guardó el dispositivo. Se procesa en ese orden (el más antiguo primero) y se
-  devuelve tal cual. La fecha del registro la pone el servidor, que también calcula su hash.
+- **`client_created_at`:** cuándo lo guardó el dispositivo; **debe llevar zona horaria** (`422` si no). Se procesa en
+  ese orden (el más antiguo primero), se devuelve tal cual y **queda guardado** en el registro
+  (`client_created_at` en `WeighingResponse` y `CollectionResponse`; `null` en lo creado en línea). Es el reloj del
+  dispositivo: un dato del registro, no su fecha. La fecha la pone el servidor, que también calcula el hash (que no
+  incluye este campo). Una hora más de 5 minutos en el futuro hace fallar solo esa operación con
+  `timestamp_in_future`.
 - **Límites:** de 1 a 200 operaciones por lote y **a lo sumo 10 de tipo `collection`** (`422 validation_error` si se
   pasa): el lote no es un camino para saltarse el límite de `POST /collections`. Además la petición cuenta contra el
   mismo límite de peticiones por IP que ese endpoint (`429 rate_limited`).

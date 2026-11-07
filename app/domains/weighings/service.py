@@ -255,7 +255,9 @@ def period_stats(
     return count_period, total_kg, pending, [(material, kg) for material, kg in by_material]
 
 
-def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) -> Weighing:
+def create_weighing(
+    db: Session, actor: User, request: CreateWeighingRequest, client_created_at: datetime | None = None,
+) -> Weighing:
     recycler = None
     if request.recycler_id is not None:
         recycler = db.get(User, request.recycler_id)
@@ -288,6 +290,7 @@ def create_weighing(db: Session, actor: User, request: CreateWeighingRequest) ->
         warehouse_id=request.warehouse_id,
         kg=request.kg,
         price_per_kg=request.price_per_kg,
+        client_created_at=client_created_at,
     )
     weighing.record_hash = integrity.compute_hash(weighing)
     db.add(weighing)
