@@ -559,3 +559,24 @@ class TestNearbyAndLocationStayInScope:
         for user in (other, world.assoc_x.admin, world.eca_a.admin):
             r = client_as(user).put(f"/recyclers/{world.recycler.id}/location", json={"latitude": "4.5", "longitude": "-74.1"})
             assert r.status_code == 403
+
+
+class TestNearbyEcasStayInScope:
+    """An association is only told about the ECAs it is actively linked to."""
+
+    def test_an_association_never_sees_the_ecas_linked_to_another_one(self, client_as, db, world):
+        from app.core.spatial import point
+        from app.domains.organizations.enums import LinkStatus
+        from app.domains.organizations.models import EcaAssociationLink
+
+        here = factories.make_organization(db, "association", legal_name="Asociación aquí")
+        there = factories.make_organization(db, "association", legal_name="Asociación allá")
+        mine = factories.make_organization(db, "eca", legal_name="Mi ECA", location=point(4.47, -74.13))
+        theirs = factories.make_organization(db, "eca", legal_name="Su ECA", location=point(4.47, -74.13))
+        db.add_all([EcaAssociationLink(eca_id=mine.id, association_id=here.id, status=LinkStatus.active),
+                    EcaAssociationLink(eca_id=theirs.id, association_id=there.id, status=LinkStatus.active)])
+        db.commit()
+        staff = factories.make_user(db, "association", role_code="association_operator", organization_id=here.id)
+        names = [i["legal_name"] for i in client_as(staff).get(
+            "/ecas/nearby", params={"lat": 4.47, "lng": -74.13}).json()["items"]]
+        assert names == ["Mi ECA"]
