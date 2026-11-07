@@ -6,6 +6,7 @@ from fastapi import status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.spatial import distance_meters, nearest_first, point, within_radius
@@ -82,7 +83,22 @@ def assign_association(db: Session, latitude: object, longitude: object) -> uuid
     return ids[0] if len(ids) == 1 else None
 
 
+def _ensure_under_daily_limit(db: Session, actor: User) -> None:
+    """One account may not flood the associations' inbox: at most `collections_max_per_day` in the last 24 hours.
+
+    Cancelled and rejected requests count too, otherwise asking and cancelling would be a way round the limit.
+    A retry with the same `Idempotency-Key` never gets here (it returns the original), so it is not counted twice.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    created = db.scalar(select(func.count()).select_from(Collection).where(
+        Collection.requester_id == actor.id, Collection.created_at >= since)) or 0
+    if created >= settings.collections_max_per_day:
+        raise ApiError("collections_daily_limit", status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                       detail="Alcanzaste el máximo de solicitudes de recolección por día. Intenta más tarde")
+
+
 def create_collection(db: Session, actor: User, request: CreateCollectionRequest) -> Collection:
+    _ensure_under_daily_limit(db, actor)
     if request.scheduled_date is not None and request.scheduled_date < _local_today():
         raise ApiError("scheduled_date_in_past", status_code=422,
                        detail="La fecha programada no puede ser anterior a hoy")

@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     sync_batch_max_items: int = 200  # the most operations POST /sync/batch takes in one request
     # The most pickup requests one batch may carry. A batch must not be a way around the limit of POST /collections.
     sync_batch_max_collections: int = 10
+    # The most pickup requests one account may create per rolling 24 hours (the IP limit alone does not stop one
+    # account that changes address).
+    collections_max_per_day: int = 20
 
     # --- Private storage for uploaded documents ---
     storage_backend: str = "local"  # only "local" exists; production needs one that survives a deploy
