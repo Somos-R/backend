@@ -37,7 +37,8 @@ Lista paginada de las solicitudes de la cuenta autenticada, de la más reciente 
 
 Una solicitud rechazada trae `rejection_reason` (`code`, `label` e `is_correctable`: si quien la pidió puede
 corregirla y volver a enviarla, o si el rechazo es definitivo) y `rejected_at`; en otro estado ambos son `null`.
-`association_id` es la asociación que atiende la solicitud (`null` mientras no se asigne).
+`association_id` es la asociación que atiende la solicitud: se asigna al crearla (hoy, la única asociación aprobada
+del piloto) y es `null` si no hay una sola a quién asignarla.
 {_WHO}
 """,
 }

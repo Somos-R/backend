@@ -20,6 +20,8 @@ from app.domains.collections.schemas import (
     RejectCollectionRequest,
 )
 from app.domains.inventory.service import ensure_material_is_active
+from app.domains.organizations.enums import OrganizationStatus, OrganizationType
+from app.domains.organizations.models import Organization
 from app.domains.organizations.scope import collection_scope
 from app.domains.users.models import User
 
@@ -65,6 +67,21 @@ def _own_collection(db: Session, actor: User, collection_id: uuid.UUID) -> Colle
     return collection
 
 
+def assign_association(db: Session, latitude: object, longitude: object) -> uuid.UUID | None:
+    """The association that handles a request made at this point.
+
+    The pilot has a single association, so it is the only approved one. This is the one place to replace with
+    coverage by area (the point inside an association's polygon, the nearest when several cover it) when a second
+    association joins. With none, or with more than one and no area to tell them apart, nobody is assigned: the
+    request stays unassigned instead of landing at the wrong organization.
+    """
+    ids = db.scalars(
+        select(Organization.id)
+        .where(Organization.type == OrganizationType.association, Organization.status == OrganizationStatus.approved)
+        .limit(2)).all()
+    return ids[0] if len(ids) == 1 else None
+
+
 def create_collection(db: Session, actor: User, request: CreateCollectionRequest) -> Collection:
     if request.scheduled_date is not None and request.scheduled_date < _local_today():
         raise ApiError("scheduled_date_in_past", status_code=422,
@@ -75,6 +92,7 @@ def create_collection(db: Session, actor: User, request: CreateCollectionRequest
     collection = Collection(
         requester_id=actor.id,
         status=CollectionStatus.pending_assignment,
+        association_id=assign_association(db, request.latitude, request.longitude),
         address=request.address,
         latitude=request.latitude,
         longitude=request.longitude,

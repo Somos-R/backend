@@ -319,8 +319,10 @@ class TestReject:
         c.patch(f"/collections/{created['id']}/cancel")
         assert _reject(client_as(association_operator), created["id"]).status_code == 409
 
-    def test_a_request_assigned_to_no_association_is_out_of_reach(self, client_as, citizen, association_operator):
+    def test_a_request_assigned_to_no_association_is_out_of_reach(self, client_as, citizen, association_operator, db):
         created = _create(client_as(citizen)).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = None
+        db.commit()
         r = _reject(client_as(association_operator), created["id"])
         assert r.status_code == 404 and r.json()["code"] == "collection_not_found"
         assert _reject(client_as(association_operator), uuid.uuid4()).status_code == 404
@@ -408,7 +410,9 @@ class TestAssociationInbox:
         self, client_as, citizen, association_operator, db,
     ):
         c = client_as(citizen)
-        _create(c)  # assigned to no association yet
+        unassigned = _create(c).json()
+        db.get(Collection, uuid.UUID(unassigned["id"])).association_id = None
+        db.commit()
         other = factories.make_user(db, "association", role_code="association_operator",
                                     organization_id=factories.make_organization(db, "association").id)
         _assigned_to(c, db, other)
@@ -486,3 +490,47 @@ class TestAssociationInbox:
         few = measure()
         assign_and_reject(9)
         assert measure() == few
+
+
+class TestAssignmentToTheAssociation:
+    """A request is assigned when it is created: the pilot has a single association, so it is the only approved one."""
+
+    def test_the_only_approved_association_gets_the_request(self, client_as, citizen, association_operator):
+        body = _create(client_as(citizen)).json()
+        assert body["association_id"] == str(association_operator.organization_id)
+        assert body["status"] == "pending_assignment"
+
+    def test_it_shows_up_in_that_associations_inbox_and_nearby_map(self, client_as, citizen, association_operator):
+        created = _create(client_as(citizen), latitude="4.4700", longitude="-74.1300").json()
+        operator = client_as(association_operator)
+        inbox = _inbox(operator, association_operator.organization_id).json()
+        assert [item["id"] for item in inbox["items"]] == [created["id"]]
+        nearby = operator.get("/collections/nearby", params={"lat": 4.47, "lng": -74.13}).json()
+        assert [item["id"] for item in nearby["items"]] == [created["id"]]
+
+    def test_with_no_association_the_request_stays_unassigned(self, client_as, citizen):
+        assert _create(client_as(citizen)).json()["association_id"] is None
+
+    def test_with_two_associations_and_no_area_to_tell_them_apart_nobody_is_assigned(
+        self, client_as, citizen, association_operator, db,
+    ):
+        factories.make_organization(db, "association", legal_name="Otra Asociación")
+        assert _create(client_as(citizen)).json()["association_id"] is None
+
+    def test_an_association_that_is_not_approved_is_not_assigned(self, client_as, citizen, db):
+        from app.domains.organizations.enums import OrganizationStatus
+        factories.make_organization(db, "association", status=OrganizationStatus.draft)
+        assert _create(client_as(citizen)).json()["association_id"] is None
+
+    def test_an_eca_is_never_assigned(self, client_as, citizen, eca_admin):
+        assert _create(client_as(citizen)).json()["association_id"] is None
+
+    def test_a_request_from_the_offline_batch_is_assigned_the_same_way(self, client_as, citizen, association_operator):
+        import uuid as uuid_module
+        from datetime import datetime, timezone
+        operation = {"type": "collection", "idempotency_key": str(uuid_module.uuid4()),
+                     "client_created_at": datetime(2026, 11, 3, tzinfo=timezone.utc).isoformat(),
+                     "payload": {"address": "Calle 1", "latitude": "4.47", "longitude": "-74.13",
+                                 "materials": ["paper"]}}
+        record = client_as(citizen).post("/sync/batch", json={"operations": [operation]}).json()["results"][0]["record"]
+        assert record["association_id"] == str(association_operator.organization_id)

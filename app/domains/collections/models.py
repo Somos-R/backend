@@ -75,7 +75,8 @@ class Collection(Base):
     scheduled_date: Mapped[date | None]    = mapped_column(Date, nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_at: Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
-    # The association that handles the request. Nothing assigns it yet; until then no association reaches it.
+    # The association that handles the request, set when it is created (`assign_association`). While it is null no
+    # association reaches the request.
     association_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=True)
     rejection_reason_code: Mapped[str | None] = mapped_column(
