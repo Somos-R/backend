@@ -3,18 +3,20 @@ from collections.abc import Sequence
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import ApiError
 from app.core.pagination import paginate
-from app.core.spatial import point
+from app.core.spatial import distance_meters, nearest_first, point, within_radius
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.collections.models import Collection, CollectionStatus, RejectionReason
 from app.domains.collections.schemas import (
     CancelCollectionRequest,
+    CollectionResponse,
     CreateCollectionRequest,
+    NearbyCollectionResponse,
     RejectCollectionRequest,
 )
 from app.domains.inventory.service import ensure_material_is_active
@@ -99,6 +101,46 @@ def list_collections(
     if status_ is not None:
         query = query.where(Collection.status == status_)
     return paginate(db, query, Collection.created_at.desc(), Collection.id.desc(), limit=limit, offset=offset)
+
+
+def list_association_inbox(
+    db: Session, actor: User, association_id: uuid.UUID, *, status_: CollectionStatus | None, limit: int, offset: int,
+) -> tuple[int, list[Collection]]:
+    """The requests assigned to the actor's own association, oldest first: the one waiting longest is reviewed
+    first. Any other association's id answers 404, as if it did not exist."""
+    if association_id != actor.organization_id:
+        raise ApiError("organization_not_found", status_code=status.HTTP_404_NOT_FOUND,
+                       detail="Organización no encontrada")
+    query = (select(Collection).where(collection_scope(actor))
+             .options(selectinload(Collection.rejection_reason)))
+    if status_ is not None:
+        query = query.where(Collection.status == status_)
+    return paginate(db, query, Collection.created_at.asc(), Collection.id.asc(), limit=limit, offset=offset)
+
+
+def nearby_collections(
+    db: Session, actor: User, *, latitude: float, longitude: float, radius_meters: float,
+    status_: CollectionStatus, limit: int, offset: int,
+) -> tuple[int, list[NearbyCollectionResponse]]:
+    """The requests of the actor's own association inside `radius_meters` of a point, nearest first.
+
+    The scope (only what is assigned to the actor's association) comes first and is never widened by the radius.
+    """
+    center = point(latitude, longitude)
+    conditions = (collection_scope(actor), Collection.status == status_,
+                  within_radius(Collection.location, center, radius_meters))
+    total = db.scalar(select(func.count()).select_from(select(Collection.id).where(*conditions).subquery())) or 0
+    rows = db.execute(
+        select(Collection, distance_meters(Collection.location, center))
+        .where(*conditions)
+        .options(selectinload(Collection.rejection_reason))
+        # `id` after the distance: pages never overlap when two requests are the same distance away.
+        .order_by(nearest_first(Collection.location, center), Collection.id)
+        .offset(offset).limit(limit)).all()
+    return total, [
+        NearbyCollectionResponse.model_validate(
+            {**CollectionResponse.model_validate(collection).model_dump(), "distance_meters": meters})
+        for collection, meters in rows]
 
 
 def get_collection(db: Session, actor: User, collection_id: uuid.UUID) -> Collection:

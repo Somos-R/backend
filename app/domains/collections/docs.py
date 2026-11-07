@@ -91,3 +91,47 @@ Queda auditado como `collection.rejected` (solo el código del motivo).
 otra responde `404 collection_not_found`, igual que si no existiera. Otros roles reciben `403`.
 """,
 }
+
+ASSOCIATION_INBOX_DOCS: dict[str, Any] = {
+    "summary": "Bandeja de solicitudes de recolección de la asociación",
+    "description": """
+Lista paginada de las solicitudes asignadas a la asociación `association_id`, **de la más antigua a la más
+reciente** (la que lleva más tiempo esperando va primero). Filtro opcional `status` (`pending_assignment`,
+`assigned`, `rejected`, `cancelled`); para la bandeja de revisión, `status=pending_assignment`. Paginación con
+`limit` (1–100, por defecto 20) y `offset`. Responde `{"total", "items"}` con la misma forma de cada solicitud que
+`GET /collections` (dirección, coordenadas, materiales, notas, fecha programada y, si fue rechazada, su motivo).
+
+Aún no hay filtros por zona ni por escalado: llegan con la zona de la asociación y con el SLA de REC-04.
+
+Errores: `404 organization_not_found` (el `association_id` no es la asociación de quien consulta),
+`422 validation_error` (estado desconocido, `limit` fuera de rango).
+
+**Quién puede:** el personal de la asociación con rol `association_admin` o `association_operator`
+(capacidad `collections.view`), y solo sobre su propia asociación: el `id` de otra responde
+`404 organization_not_found`, igual que si no existiera. Otros roles reciben `403`.
+""",
+}
+
+NEARBY_COLLECTIONS_DOCS: dict[str, Any] = {
+    "summary": "Solicitudes de recolección cercanas a un punto",
+    "description": """
+Para el mapa del Operativo y del Encargado de rutas: las solicitudes de **la propia asociación** que están dentro
+de un radio de un punto, **de la más cercana a la más lejana**.
+
+- `lat` (-90 a 90) y `lng` (-180 a 180): el punto de referencia.
+- `radius`: radio en **metros**, de 1 a 50.000 (por defecto 2.000).
+- `status`: por defecto `pending_assignment`, las que esperan ruta.
+- `limit` (1–100, por defecto 20) y `offset`.
+
+Responde `{"total", "items"}`; cada solicitud trae la misma información que en la bandeja de la asociación y,
+además, `distance_meters`: la distancia en línea recta, en metros, desde el punto pedido. `total` cuenta todas las
+que caen dentro del radio, no solo las de la página.
+
+El alcance va primero y el radio nunca lo amplía: solo aparecen las solicitudes asignadas a la asociación de quien
+consulta. Las que aún no tienen asociación no aparecen.
+
+**Quién puede:** el personal de la asociación con rol `association_admin`, `association_operator` o `route_manager`
+(capacidad `collections.nearby`). Otros roles reciben `403`. Errores: `422 validation_error` (coordenadas, radio o
+estado fuera de rango).
+""",
+}

@@ -20,7 +20,9 @@ permisos y reglas, y con idempotencia.
   misma clave que acepta la cabecera `Idempotency-Key` de los endpoints: una clave usada en uno se reconoce en el otro.
 - **`client_created_at`:** cuándo lo guardó el dispositivo. Se procesa en ese orden (el más antiguo primero) y se
   devuelve tal cual. La fecha del registro la pone el servidor, que también calcula su hash.
-- **Límite:** de 1 a 200 operaciones por lote (`422 validation_error` si se pasa).
+- **Límites:** de 1 a 200 operaciones por lote y **a lo sumo 10 de tipo `collection`** (`422 validation_error` si se
+  pasa): el lote no es un camino para saltarse el límite de `POST /collections`. Además la petición cuenta contra el
+  mismo límite de peticiones por IP que ese endpoint (`429 rate_limited`).
 
 **Respuesta (200):** `summary` con el conteo y `results` en el **orden de la petición**, uno por operación:
 

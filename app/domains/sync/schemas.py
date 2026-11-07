@@ -29,6 +29,15 @@ class SyncBatchRequest(BaseModel):
             raise ValueError(f"Un lote admite como máximo {settings.sync_batch_max_items} operaciones")
         return operations
 
+    @field_validator("operations")
+    @classmethod
+    def within_the_pickup_limit(cls, operations: list[SyncOperation]) -> list[SyncOperation]:
+        pickups = sum(operation.type == "collection" for operation in operations)
+        if pickups > settings.sync_batch_max_collections:
+            raise ValueError(
+                f"Un lote admite como máximo {settings.sync_batch_max_collections} solicitudes de recolección")
+        return operations
+
 
 class SyncItemError(BaseModel):
     code: str

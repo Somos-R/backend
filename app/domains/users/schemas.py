@@ -1,5 +1,7 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -189,3 +191,20 @@ class UpdateRecyclerStatusRequest(BaseModel):
         if self.status == VerificationStatus.rejected and not self.rejection_reason:
             raise ValueError("rejection_reason es requerido cuando el estado es rechazado (2)")
         return self
+
+
+class RecyclerLocationRequest(BaseModel):
+    """Where the recycler is. `kind` says which point it is: where they are now, or where their day starts."""
+
+    latitude: Decimal = Field(ge=-90, le=90, max_digits=9, decimal_places=6)
+    longitude: Decimal = Field(ge=-180, le=180, max_digits=9, decimal_places=6)
+    timestamp: datetime | None = None  # device time of the reading; the server's time when omitted
+    kind: Literal["current", "start"] = "current"
+
+
+class RecyclerLocationResponse(BaseModel):
+    kind: Literal["current", "start"]
+    latitude: Decimal
+    longitude: Decimal
+    updated_at: datetime | None  # device time of the stored current position (None for `start`)
+    applied: bool  # False when a newer position was already stored and this older one was ignored

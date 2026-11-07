@@ -301,6 +301,26 @@ class TestCollectionRequestsReachOnlyTheirAssociation:
         r = client_as(world.assoc_x.operator).post(f"/collections/{created['id']}/reject", json=body)
         assert r.status_code == 200 and r.json()["status"] == "rejected"
 
+    def test_each_association_sees_only_its_own_inbox(self, client_as, world, db):
+        from app.domains.collections.models import Collection
+
+        created = client_as(world.citizen).post("/collections", json={
+            "address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = world.assoc_x.org.id
+        db.commit()
+        inbox_x = f"/associations/{world.assoc_x.org.id}/collections"
+
+        for outsider in (world.assoc_y.admin, world.assoc_y.operator):
+            r = client_as(outsider).get(inbox_x)
+            assert r.status_code == 404 and r.json()["code"] == "organization_not_found"
+            own = client_as(outsider).get(f"/associations/{world.assoc_y.org.id}/collections").json()
+            assert own["total"] == 0
+        for eca_staff in (world.eca_a.admin, world.eca_a.operator):
+            assert client_as(eca_staff).get(inbox_x).status_code == 403
+
+        r = client_as(world.assoc_x.operator).get(inbox_x)
+        assert r.status_code == 200 and [item["id"] for item in r.json()["items"]] == [created["id"]]
+
 
 class TestIdempotencyKeysBelongToTheirAccount:
     """A stored response is replayed only to the account that created it: another ECA reusing the same
@@ -491,3 +511,29 @@ class TestSyncBatchStaysInItsOrganization:
         assert created["results"][0]["status"] == "created"
         assert other["results"][0]["status"] == "error"
         assert other["results"][0]["record"] is None
+
+
+class TestNearbyAndLocationStayInScope:
+    """The map endpoints never reach across organizations or across people."""
+
+    def test_an_association_never_sees_the_pickups_assigned_to_another_one(self, client_as, db, world):
+        from app.domains.collections.models import Collection
+
+        c = client_as(factories.make_user(db, "citizen"))
+        collection_id = c.post("/collections", json={
+            "address": "Calle 1 # 2-3", "latitude": "4.47", "longitude": "-74.13", "materials": ["paper"]}).json()["id"]
+        db.get(Collection, collection_id).association_id = world.assoc_x.org.id
+        db.commit()
+        params = {"lat": 4.47, "lng": -74.13, "radius": 5000}
+        assert client_as(world.assoc_x.operator).get("/collections/nearby", params=params).json()["total"] == 1
+        assert client_as(world.assoc_y.operator).get("/collections/nearby", params=params).json()["total"] == 0
+
+    def test_an_eca_gets_no_pickups_at_all(self, client_as, world):
+        r = client_as(world.eca_a.admin).get("/collections/nearby", params={"lat": 4.47, "lng": -74.13})
+        assert r.status_code == 403
+
+    def test_a_recycler_cannot_move_another_recyclers_location(self, client_as, db, world):
+        other = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
+        for user in (other, world.assoc_x.admin, world.eca_a.admin):
+            r = client_as(user).put(f"/recyclers/{world.recycler.id}/location", json={"latitude": "4.5", "longitude": "-74.1"})
+            assert r.status_code == 403

@@ -267,3 +267,20 @@ Responde `404 user_not_found` si la persona no es de tu organización (igual que
         404: {"description": "La persona no existe o no es de tu organización"},
     },
 }
+
+UPDATE_RECYCLER_LOCATION_DOCS: dict[str, Any] = {
+    "summary": "Actualizar la ubicación del reciclador",
+    "description": """
+La app del reciclador informa dónde está. **Solo el propio reciclador** puede actualizar su ubicación
+(`403 location_own_only` para cualquier otra cuenta, incluido el personal de su asociación).
+
+- `kind: "current"` (por defecto): dónde está ahora, durante la ruta. Se guarda con la hora de la lectura
+  (`timestamp`, hora del dispositivo; la del servidor si se omite). Una lectura **más antigua** que la guardada se
+  ignora (`applied: false`): una app sin conexión puede reenviar lecturas viejas en cualquier orden. Una hora más de
+  5 minutos en el futuro responde `422 timestamp_in_future`.
+- `kind: "start"`: donde empieza su jornada; el motor de rutas planifica desde ahí.
+- `latitude` entre -90 y 90 y `longitude` entre -180 y 180, hasta 6 decimales.
+
+La ubicación es un dato personal: **no se registra en la auditoría ni en los logs**.
+""",
+}

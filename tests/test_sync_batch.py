@@ -169,6 +169,35 @@ class TestTheShapeOfTheBatch:
     def test_the_default_limit_is_two_hundred(self):
         assert settings.sync_batch_max_items == 200
 
+    def test_a_batch_cannot_carry_more_pickup_requests_than_the_limit(self, client_as, citizen, monkeypatch, db):
+        monkeypatch.setattr(settings, "sync_batch_max_collections", 2)
+        operations = [_collection(minutes=i) for i in range(3)]
+        r = client_as(citizen).post("/sync/batch", json={"operations": operations})
+        assert r.status_code == 422 and r.json()["code"] == "validation_error"
+        assert db.query(Collection).count() == 0  # nothing was created
+        assert client_as(citizen).post("/sync/batch", json={"operations": operations[:2]}).status_code == 200
+
+    def test_weighings_do_not_count_against_the_pickup_limit(self, client_as, eca_admin, recycler, warehouse, monkeypatch):
+        monkeypatch.setattr(settings, "sync_batch_max_collections", 1)
+        operations = [_weighing(recycler, warehouse, minutes=i) for i in range(3)]
+        assert client_as(eca_admin).post("/sync/batch", json={"operations": operations}).status_code == 200
+
+    def test_the_default_pickup_limit_is_ten(self):
+        assert settings.sync_batch_max_collections == 10
+
+    def test_the_batch_shares_the_request_limit_of_creating_a_pickup_request(self, client_as, citizen, monkeypatch):
+        from app.core.rate_limit import limiter
+
+        monkeypatch.setattr(limiter, "enabled", True)
+        monkeypatch.setattr(settings, "rate_limit_register", "2/minute")
+        limiter.reset()
+        try:
+            statuses = [client_as(citizen).post("/sync/batch", json={"operations": [_collection(minutes=i)]}).status_code
+                        for i in range(3)]
+        finally:
+            limiter.reset()
+        assert statuses == [200, 200, 429]
+
     @pytest.mark.parametrize("change", [
         {"type": "route_stop"}, {"idempotency_key": "not-a-uuid"}, {"client_created_at": "yesterday"}, {"payload": "x"},
     ])

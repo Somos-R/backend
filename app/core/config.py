@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     weighings_full_list_max_rows: int = 10_000  # the most GET /weighings/all returns (the newest ones); `truncated` says so
 
     sync_batch_max_items: int = 200  # the most operations POST /sync/batch takes in one request
+    # The most pickup requests one batch may carry. A batch must not be a way around the limit of POST /collections.
+    sync_batch_max_collections: int = 10
 
     # --- Private storage for uploaded documents ---
     storage_backend: str = "local"  # only "local" exists; production needs one that survives a deploy
