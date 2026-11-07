@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.core.permissions import (
     ASSOC_ADMIN,
     ECA_ADMIN,
+    ECA_NEARBY,
     ECA_ROUTING_PROFILE_READ,
     ECA_ROUTING_PROFILE_WRITE,
     ORG_ADMINS,
@@ -19,6 +20,7 @@ from app.domains.organizations.docs import (
     DIRECTORY_DOCS,
     GET_ECA_ROUTING_PROFILE_DOCS,
     LIST_LINKS_DOCS,
+    LIST_NEARBY_ECAS_DOCS,
     REJECT_LINK_DOCS,
     REMOVE_LINK_DOCS,
     REQUEST_LINK_DOCS,
@@ -31,6 +33,7 @@ from app.domains.organizations.schemas import (
     EcaRoutingProfileResponse,
     LinkListResponse,
     LinkResponse,
+    NearbyEcaListResponse,
     RejectLinkRequest,
     RequestLinkRequest,
 )
@@ -107,6 +110,22 @@ def remove_link(
     actor: User = Depends(require_roles(*ORG_ADMINS)),
 ):
     return service.remove(db, actor, link_id)
+
+
+@ecas_router.get("/nearby", response_model=NearbyEcaListResponse, **LIST_NEARBY_ECAS_DOCS)
+def nearby_ecas(
+    lat: float = Query(ge=-90, le=90),
+    lng: float = Query(ge=-180, le=180),
+    radius: float = Query(default=5000, ge=1, le=50000),
+    material: str | None = Query(default=None, min_length=1, max_length=30),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*ECA_NEARBY)),
+):
+    total, items = service.nearby_ecas(
+        db, actor, latitude=lat, longitude=lng, radius_meters=radius, material=material, limit=limit, offset=offset)
+    return NearbyEcaListResponse(total=total, items=items)
 
 
 @ecas_router.get("/me/routing-profile", response_model=EcaRoutingProfileResponse, **GET_ECA_ROUTING_PROFILE_DOCS)

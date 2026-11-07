@@ -138,3 +138,21 @@ class EcaRoutingProfileResponse(BaseModel):
     reception_hours: list[ReceptionWindow] | None
     accepted_materials: list[str] | None
     updated_at: datetime
+
+
+class NearbyEcaResponse(BaseModel):
+    """A linked ECA near a point: where it is, when it receives and what it takes."""
+
+    id: uuid.UUID
+    legal_name: str
+    city: str | None
+    latitude: Decimal
+    longitude: Decimal
+    reception_hours: list[ReceptionWindow] | None
+    accepted_materials: list[str] | None
+    distance_meters: float  # straight line from the point asked for, on the spheroid
+
+
+class NearbyEcaListResponse(BaseModel):
+    total: int  # all inside the radius, not just this page
+    items: list[NearbyEcaResponse]

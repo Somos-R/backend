@@ -56,6 +56,7 @@ AUDIT_READ = frozenset({ASSOC_ADMIN})
 COLLECTIONS_REVIEW = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR})
 COLLECTIONS_ROUTING = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR, ROUTE_MANAGER})  # the dispatch map: also the route manager
 
+ECA_NEARBY = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR, ROUTE_MANAGER})  # where to take material: the dispatch map
 ECA_ROUTING_PROFILE_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE})
 ECA_ROUTING_PROFILE_WRITE = frozenset({ECA_ADMIN})
 
@@ -86,6 +87,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "links.view": ORG_ADMINS,  # see the links of your own organization (either side may remove one)
     "staff.view": ORG_ADMINS,  # only admins see their organization's staff (visible_user_types)
     "staff.manage": ORG_ADMINS,  # PATCH /users/{id}/status: deactivate or reactivate your own staff
+    "ecas.nearby": ECA_NEARBY,  # GET /ecas/nearby
     "eca_routing_profile.view": ECA_ROUTING_PROFILE_READ,  # GET /ecas/me/routing-profile
     "eca_routing_profile.edit": ECA_ROUTING_PROFILE_WRITE,  # PUT /ecas/me/routing-profile
 }

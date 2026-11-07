@@ -113,3 +113,24 @@ auditado (`eca.routing_profile_updated`, con los códigos de material y cuántas
 {_ROUTING_PROFILE}
 """,
 }
+
+LIST_NEARBY_ECAS_DOCS: dict[str, Any] = {
+    "summary": "ECA vinculadas cercanas a un punto",
+    "description": """
+Las ECA a las que puede llevar material tu asociación, dentro de un radio, de la **más cercana a la más lejana**.
+Sirve para elegir a dónde entregar lo recogido y, más adelante, para el cálculo de rutas.
+
+**Quién puede:** personal de asociación (`association_admin`, `association_operator`, `route_manager`); capacidad
+`ecas.nearby`. Cualquier otra cuenta recibe `403`.
+
+**Alcance:** solo las ECA **aprobadas y con vínculo activo** con tu asociación; el radio nunca lo amplía. Una ECA sin
+ubicación declarada (ver `PUT /ecas/me/routing-profile`) no aparece.
+
+Parámetros: `lat` (-90 a 90) y `lng` (-180 a 180) del punto; `radius` en metros (1 a 50 000, por defecto 5 000);
+`material` (opcional: código del catálogo; solo las ECA que declararon recibirlo, y las que no declararon materiales
+quedan fuera); `limit` (1 a 100, por defecto 20) y `offset`.
+
+Cada ECA trae `distance_meters` (línea recta sobre el esferoide), su ubicación, `reception_hours` y
+`accepted_materials`. `total` cuenta todas las que caen en el radio, no solo la página.
+""",
+}

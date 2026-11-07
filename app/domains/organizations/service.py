@@ -9,13 +9,19 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core import search
 from app.core.errors import ApiError
 from app.core.pagination import paginate
-from app.core.spatial import latitude_longitude, point
+from app.core.spatial import (
+    distance_meters,
+    latitude_longitude,
+    nearest_first,
+    point,
+    within_radius,
+)
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.inventory.service import ensure_material_is_active
@@ -28,7 +34,9 @@ from app.domains.organizations.models import EcaAssociationLink, Organization
 from app.domains.organizations.schemas import (
     EcaRoutingProfileRequest,
     EcaRoutingProfileResponse,
+    NearbyEcaResponse,
 )
+from app.domains.organizations.scope import nearby_eca_scope
 from app.domains.users.models import User
 
 COORDINATE_DECIMALS = 6  # the precision the request accepts; reading the point back must not invent more
@@ -215,3 +223,35 @@ def update_routing_profile(db: Session, actor: User, request: EcaRoutingProfileR
     db.commit()
     db.refresh(eca)
     return _routing_profile(db, eca)
+
+
+# --- ECAs near a point ----------------------------------------------------------------------
+
+def nearby_ecas(
+    db: Session, actor: User, *, latitude: float, longitude: float, radius_meters: float,
+    material: str | None, limit: int, offset: int,
+) -> tuple[int, list[NearbyEcaResponse]]:
+    """The ECAs linked to the actor's association inside `radius_meters` of a point, nearest first.
+
+    The scope (approved ECAs actively linked to the actor's association) comes first and the radius never
+    widens it. With `material`, only ECAs that declared they take it; one that has not declared any is left out.
+    """
+    center = point(latitude, longitude)
+    conditions = [nearby_eca_scope(actor), Organization.location.is_not(None),
+                  within_radius(Organization.location, center, radius_meters)]
+    if material is not None:
+        conditions.append(Organization.accepted_materials.contains([material]))
+    total = db.scalar(select(func.count()).select_from(select(Organization.id).where(*conditions).subquery())) or 0
+    lat, lng = latitude_longitude(Organization.location)
+    rows = db.execute(
+        select(Organization, lat, lng, distance_meters(Organization.location, center))
+        .where(*conditions)
+        # `id` after the distance: pages never overlap when two ECAs are the same distance away.
+        .order_by(nearest_first(Organization.location, center), Organization.id)
+        .offset(offset).limit(limit)).all()
+    return total, [
+        NearbyEcaResponse(
+            id=eca.id, legal_name=eca.legal_name, city=eca.city,
+            latitude=round(Decimal(la), COORDINATE_DECIMALS), longitude=round(Decimal(lo), COORDINATE_DECIMALS),
+            reception_hours=eca.reception_hours, accepted_materials=eca.accepted_materials, distance_meters=meters)
+        for eca, la, lo, meters in rows]

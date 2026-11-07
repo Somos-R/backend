@@ -22,8 +22,12 @@ from sqlalchemy.orm import Session
 from app.core.errors import ApiError
 from app.domains.collections.models import Collection
 from app.domains.inventory.models import Warehouse
-from app.domains.organizations.enums import LinkStatus
-from app.domains.organizations.models import EcaAssociationLink
+from app.domains.organizations.enums import (
+    LinkStatus,
+    OrganizationStatus,
+    OrganizationType,
+)
+from app.domains.organizations.models import EcaAssociationLink, Organization
 from app.domains.transactions.models import Transaction
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
@@ -112,6 +116,17 @@ def collection_scope(actor: User) -> ColumnElement[bool]:
     if actor.organization_id is None or actor.user_type_code != "association":
         return false()
     return Collection.association_id == actor.organization_id
+
+
+def nearby_eca_scope(actor: User) -> ColumnElement[bool]:
+    """The ECAs an association can send material to: approved ones its association is actively linked to.
+
+    Any other organization, or an account without one, reaches none (fail closed).
+    """
+    if actor.organization_id is None or actor.user_type_code != "association":
+        return false()
+    return and_(Organization.type == OrganizationType.eca, Organization.status == OrganizationStatus.approved,
+                Organization.id.in_(linked_ecas(actor.organization_id)))
 
 
 def recycler_linked_to(eca_id: uuid.UUID) -> ColumnElement[bool]:
