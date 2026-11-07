@@ -83,6 +83,8 @@ class Collection(Base):
         String(40), ForeignKey("rejection_reasons.code"), nullable=True)
     rejected_by:  Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     rejected_at:  Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the device saved it, if it arrived through POST /sync/batch (the device's clock, not the record's date).
+    client_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at:   Mapped[datetime]         = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at:   Mapped[datetime]         = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
