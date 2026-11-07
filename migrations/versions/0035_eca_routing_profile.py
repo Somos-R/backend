@@ -7,8 +7,8 @@ the same endpoint now fills it.
 
 Additive only. Downgrade drops both columns and whatever was stored in them.
 
-Revision ID: 0034
-Revises: 0033
+Revision ID: 0035
+Revises: 0034
 Create Date: 2026-11-05
 
 """
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0034"
-down_revision: Union[str, Sequence[str], None] = "0033"
+revision: str = "0035"
+down_revision: Union[str, Sequence[str], None] = "0034"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

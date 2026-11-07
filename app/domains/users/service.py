@@ -3,7 +3,7 @@
 Each function that changes data commits: it is a unit of work the router only translates to HTTP.
 """
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import status
 from sqlalchemy import and_, false, or_, select
@@ -26,6 +26,7 @@ from app.core.permissions import (
     manageable_user_types,
     visible_user_types,
 )
+from app.core.spatial import point
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.auth import service as auth_service
@@ -38,6 +39,8 @@ from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 from app.domains.users.schemas import (
     InviteStaffRequest,
+    RecyclerLocationRequest,
+    RecyclerLocationResponse,
     UpdateRecyclerStatusRequest,
     UpdateUserRequest,
 )
@@ -336,3 +339,45 @@ def resend_invitation(db: Session, actor: User, user_id: uuid.UUID) -> tuple[Use
     audit.record(db, Action.USER_INVITATION_RESENT, actor=actor, target_type="user", target_id=user.id)
     db.commit()
     return user, token, organization.legal_name
+
+
+# A device clock a little ahead of ours is normal; one far ahead would pin the stored position in the future and
+# make every later, correct report look "older", so it is refused.
+MAX_CLOCK_SKEW = timedelta(minutes=5)
+
+
+def update_recycler_location(
+    db: Session, actor: User, recycler_id: uuid.UUID, request: RecyclerLocationRequest,
+) -> RecyclerLocationResponse:
+    """Only the recycler themself moves their own points. Location is personal data: it is never written to the
+    audit trail or the logs.
+
+    A `current` position older than the stored one is ignored (an offline app replays what it saw, in any order).
+    """
+    if actor.user_type_code != "recycler" or actor.id != recycler_id:
+        raise ApiError("location_own_only", status_code=status.HTTP_403_FORBIDDEN,
+                       detail="Solo el propio reciclador actualiza su ubicación")
+    now = datetime.now(timezone.utc)
+    reported_at = request.timestamp or now
+    if reported_at.tzinfo is None:
+        reported_at = reported_at.replace(tzinfo=timezone.utc)
+    if reported_at > now + MAX_CLOCK_SKEW:
+        raise ApiError("timestamp_in_future", status_code=422, detail="La hora de la lectura está en el futuro")
+
+    user = db.get(User, recycler_id, with_for_update=True)  # lock: two reports of one device must not interleave
+    assert user is not None  # the actor is that user
+    applied = True
+    if request.kind == "start":
+        user.start_location = point(request.latitude, request.longitude)
+        stored_at = None
+    else:
+        if user.location_updated_at is not None and reported_at <= user.location_updated_at:
+            applied = False
+        else:
+            user.current_location = point(request.latitude, request.longitude)
+            user.location_updated_at = reported_at
+        stored_at = user.location_updated_at
+    db.commit()
+    return RecyclerLocationResponse(
+        kind=request.kind, latitude=request.latitude, longitude=request.longitude, updated_at=stored_at,
+        applied=applied)

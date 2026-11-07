@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.idempotency import IdempotencyKeyHeader, create_once
-from app.core.permissions import COLLECTIONS_REVIEW, forbidden
+from app.core.permissions import COLLECTIONS_REVIEW, COLLECTIONS_ROUTING, forbidden
 from app.core.rate_limit import limiter, register_limit
 from app.core.security import get_current_user, require_roles
 from app.domains.collections import service
@@ -15,6 +15,7 @@ from app.domains.collections.docs import (
     CREATE_COLLECTION_DOCS,
     GET_COLLECTION_DOCS,
     LIST_COLLECTIONS_DOCS,
+    NEARBY_COLLECTIONS_DOCS,
     REJECT_COLLECTION_DOCS,
     REJECTION_REASONS_DOCS,
 )
@@ -24,6 +25,7 @@ from app.domains.collections.schemas import (
     CollectionListResponse,
     CollectionResponse,
     CreateCollectionRequest,
+    NearbyCollectionListResponse,
     RejectCollectionRequest,
     RejectionReasonResponse,
 )
@@ -33,12 +35,10 @@ router = APIRouter(prefix="/collections", tags=["collections"])
 # The association's side of the same requests: what reaches its staff to review.
 associations_router = APIRouter(prefix="/associations", tags=["collections"])
 
-REQUESTER_TYPES = frozenset({"citizen", "building"})
-
 
 def get_requester(user: User = Depends(get_current_user)) -> User:
     """Who generates the material asks for it to be picked up: a citizen or a building."""
-    if user.user_type_code in REQUESTER_TYPES:
+    if service.can_request(user):
         return user
     raise forbidden("Solo ciudadanos y edificios pueden solicitar recolección", "collections_requesters_only")
 
@@ -68,6 +68,22 @@ def list_collections(
 ):
     total, items = service.list_collections(db, actor, status_=status_, limit=limit, offset=offset)
     return CollectionListResponse(total=total, items=items)
+
+
+@router.get("/nearby", response_model=NearbyCollectionListResponse, **NEARBY_COLLECTIONS_DOCS)
+def nearby_collections(
+    lat: float = Query(ge=-90, le=90),
+    lng: float = Query(ge=-180, le=180),
+    radius: float = Query(default=2000, gt=0, le=50_000, description="Metros"),
+    status_: CollectionStatus = Query(default=CollectionStatus.pending_assignment, alias="status"),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*COLLECTIONS_ROUTING)),
+):
+    total, items = service.nearby_collections(
+        db, actor, latitude=lat, longitude=lng, radius_meters=radius, status_=status_, limit=limit, offset=offset)
+    return NearbyCollectionListResponse(total=total, items=items)
 
 
 @router.get("/rejection-reasons", response_model=list[RejectionReasonResponse], **REJECTION_REASONS_DOCS)

@@ -137,7 +137,8 @@ Authorization: Bearer <access_token>
 ```
 
 El payload del token contiene `sub` (UUID del usuario) y `user_type`.
-Por seguridad, el error 401 no indica si el email existe o no.
+El email se compara sin distinguir mayúsculas ni espacios alrededor; uno con formato inválido responde
+422 (`validation_error`) sin consultar la cuenta. Por seguridad, el error 401 no indica si el email existe o no.
 
 **Protección contra abuso:**
 - Máximo **10 intentos por minuto por IP** (429 al superarlo).

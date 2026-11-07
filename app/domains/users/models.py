@@ -84,6 +84,11 @@ class User(Base):
     start_location: Mapped[object | None] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
     )
+    # Where the recycler is now, as the app last reported it, and the device time of that report.
+    current_location: Mapped[object | None] = mapped_column(
+        Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True
+    )
+    location_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # --- eca ---
     employee_code: Mapped[str | None] = mapped_column(String(50), nullable=True)

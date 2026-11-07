@@ -54,6 +54,7 @@ PAYMENTS = frozenset({ECA_ADMIN, ASSOC_ADMIN})
 AUDIT_READ = frozenset({ASSOC_ADMIN})
 
 COLLECTIONS_REVIEW = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR})
+COLLECTIONS_ROUTING = frozenset({ASSOC_ADMIN, ASSOC_OPERATOR, ROUTE_MANAGER})  # the dispatch map: also the route manager
 
 ECA_ROUTING_PROFILE_READ = frozenset({ECA_ADMIN, ECA_OPERATOR, ECA_WAREHOUSE})
 ECA_ROUTING_PROFILE_WRITE = frozenset({ECA_ADMIN})
@@ -78,6 +79,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     "audit.view": AUDIT_READ,
     "collections.view": COLLECTIONS_REVIEW,  # GET /associations/{id}/collections
     "collections.reject": COLLECTIONS_REVIEW,  # POST /collections/{id}/reject
+    "collections.nearby": COLLECTIONS_ROUTING,  # GET /collections/nearby
     "staff.invite": ORG_ADMINS,  # POST /users/invitations and .../invitation/resend
     "links.request": frozenset({ECA_ADMIN}),  # an ECA asks an Association to link
     "links.decide": frozenset({ASSOC_ADMIN}),  # the Association accepts or rejects

@@ -405,7 +405,7 @@ def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, st
 
 def login(db: Session, email: str, password: str) -> dict:
     """Check credentials and open a session. Returns the token response."""
-    user = db.scalars(select(User).where(func.lower(User.email) == email.strip().lower())).first()
+    user = db.scalars(select(User).where(func.lower(User.email) == email)).first()
 
     # Always run one bcrypt comparison, whether the account exists, is locked or has no
     # password yet, so response time does not reveal which case it is.

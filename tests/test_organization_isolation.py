@@ -489,3 +489,73 @@ class TestEcaRoutingProfileScope:
         for user in (world.assoc_x.admin, world.assoc_x.operator):
             assert client_as(user).get("/ecas/me/routing-profile").status_code == 403
             assert client_as(user).put("/ecas/me/routing-profile", json=self.PROFILE).status_code == 403
+
+
+class TestSyncBatchStaysInItsOrganization:
+    """`POST /sync/batch` creates through the same services as the endpoints: it never writes into, nor answers with,
+    another organization's data."""
+
+    @pytest.fixture
+    def warehouse_of_a(self, db, world):
+        from app.domains.inventory.models import Warehouse
+
+        warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
+        warehouse.organization_id = world.eca_a.org.id
+        db.commit()
+        return warehouse
+
+    @staticmethod
+    def _operation(world, warehouse):
+        return {"type": "weighing", "idempotency_key": str(uuid.uuid4()), "client_created_at": "2026-11-03T09:00:00Z",
+                "payload": {"recycler_id": str(world.recycler.id), "material_code": "plastic",
+                            "warehouse_id": str(warehouse.id), "kg": "10", "price_per_kg": "400"}}
+
+    def test_another_eca_cannot_weigh_into_a_warehouse_that_is_not_its_own(self, client_as, db, world, warehouse_of_a):
+        from app.domains.weighings.models import Weighing
+
+        r = client_as(world.eca_b.admin).post(
+            "/sync/batch", json={"operations": [self._operation(world, warehouse_of_a)]})
+        assert r.status_code == 200
+        result = r.json()["results"][0]
+        assert result["status"] == "error" and result["record"] is None
+        assert db.query(Weighing).count() == 0
+
+    def test_the_owning_eca_can(self, client_as, world, warehouse_of_a):
+        r = client_as(world.eca_a.admin).post(
+            "/sync/batch", json={"operations": [self._operation(world, warehouse_of_a)]})
+        assert r.json()["results"][0]["status"] == "created"
+
+    def test_the_same_key_in_two_organizations_never_returns_the_others_record(self, client_as, db, world, warehouse_of_a):
+        """Keys belong to the account: B reusing A's key neither sees A's weighing nor is told it exists."""
+        operation = self._operation(world, warehouse_of_a)
+        created = client_as(world.eca_a.admin).post("/sync/batch", json={"operations": [operation]}).json()
+        other = client_as(world.eca_b.admin).post("/sync/batch", json={"operations": [operation]}).json()
+        assert created["results"][0]["status"] == "created"
+        assert other["results"][0]["status"] == "error"
+        assert other["results"][0]["record"] is None
+
+
+class TestNearbyAndLocationStayInScope:
+    """The map endpoints never reach across organizations or across people."""
+
+    def test_an_association_never_sees_the_pickups_assigned_to_another_one(self, client_as, db, world):
+        from app.domains.collections.models import Collection
+
+        c = client_as(factories.make_user(db, "citizen"))
+        collection_id = c.post("/collections", json={
+            "address": "Calle 1 # 2-3", "latitude": "4.47", "longitude": "-74.13", "materials": ["paper"]}).json()["id"]
+        db.get(Collection, collection_id).association_id = world.assoc_x.org.id
+        db.commit()
+        params = {"lat": 4.47, "lng": -74.13, "radius": 5000}
+        assert client_as(world.assoc_x.operator).get("/collections/nearby", params=params).json()["total"] == 1
+        assert client_as(world.assoc_y.operator).get("/collections/nearby", params=params).json()["total"] == 0
+
+    def test_an_eca_gets_no_pickups_at_all(self, client_as, world):
+        r = client_as(world.eca_a.admin).get("/collections/nearby", params={"lat": 4.47, "lng": -74.13})
+        assert r.status_code == 403
+
+    def test_a_recycler_cannot_move_another_recyclers_location(self, client_as, db, world):
+        other = factories.make_user(db, "recycler", organization_id=world.assoc_x.org.id)
+        for user in (other, world.assoc_x.admin, world.eca_a.admin):
+            r = client_as(user).put(f"/recyclers/{world.recycler.id}/location", json={"latitude": "4.5", "longitude": "-74.1"})
+            assert r.status_code == 403

@@ -94,6 +94,20 @@ class TestLogin:
         r = client.post("/auth/login", json={"email": "nadie@test.com", "password": "x"})
         assert r.status_code == 401
 
+    def test_email_case_and_surrounding_spaces_are_ignored(self, client, db):
+        user = factories.make_user(db, "citizen")
+        r = client.post("/auth/login", json={
+            "email": f"  {user.email.upper()} ", "password": DEFAULT_PASSWORD})
+        assert r.status_code == 200
+
+    def test_malformed_email_is_rejected_before_any_lookup(self, client, db):
+        user = factories.make_user(db, "citizen")
+        r = client.post("/auth/login", json={"email": "not-an-email", "password": DEFAULT_PASSWORD})
+        assert r.status_code == 422
+        assert r.json()["code"] == "validation_error"
+        db.refresh(user)
+        assert user.failed_login_attempts == 0
+
     def test_pending_recycler_cannot_log_in(self, client, db):
         user = factories.make_user(
             db, "recycler", verification_status=VerificationStatus.pending, password_hash="")

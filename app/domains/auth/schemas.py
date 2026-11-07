@@ -189,7 +189,7 @@ class LoginRequest(BaseModel):
         }
     )
 
-    email: str = Field(max_length=255)
+    email: Email
     password: str = Field(max_length=128)
 
 
