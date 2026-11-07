@@ -82,7 +82,9 @@ def assign_association(db: Session, latitude: object, longitude: object) -> uuid
     return ids[0] if len(ids) == 1 else None
 
 
-def create_collection(db: Session, actor: User, request: CreateCollectionRequest) -> Collection:
+def create_collection(
+    db: Session, actor: User, request: CreateCollectionRequest, client_created_at: datetime | None = None,
+) -> Collection:
     if request.scheduled_date is not None and request.scheduled_date < _local_today():
         raise ApiError("scheduled_date_in_past", status_code=422,
                        detail="La fecha programada no puede ser anterior a hoy")
@@ -100,6 +102,7 @@ def create_collection(db: Session, actor: User, request: CreateCollectionRequest
         materials=request.materials,
         notes=request.notes,
         scheduled_date=request.scheduled_date,
+        client_created_at=client_created_at,
     )
     db.add(collection)
     db.flush()

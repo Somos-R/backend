@@ -215,11 +215,11 @@ class TestAnUnexpectedFailure:
         real = weighings_service.create_weighing
         calls = []
 
-        def flaky(db_, actor, body):
+        def flaky(db_, actor, body, client_created_at):
             calls.append(body.kg)
             if len(calls) == 2:
                 raise RuntimeError("boom")
-            return real(db_, actor, body)
+            return real(db_, actor, body, client_created_at)
 
         monkeypatch.setitem(sync_service._HANDLERS, "weighing", replace(sync_service._HANDLERS["weighing"], create=flaky))
         with caplog.at_level("ERROR"):
@@ -229,3 +229,46 @@ class TestAnUnexpectedFailure:
         assert "boom" not in str(body)  # nothing internal leaks to the client
         assert any("sync batch" in r.message for r in caplog.records)
         assert db.query(Weighing).count() == 2
+
+
+class TestClientCreatedAtIsKept:
+    """When the device saved a record is stored with it, as a fact about the record and not as its date."""
+
+    def test_a_weighing_keeps_when_the_device_saved_it(self, client_as, eca_admin, recycler, warehouse, db):
+        body = _send(client_as, eca_admin, _weighing(recycler, warehouse, minutes=7))
+        record = body["results"][0]["record"]
+        assert datetime.fromisoformat(record["client_created_at"]) == BASE + timedelta(minutes=7)
+        stored = db.get(Weighing, uuid.UUID(record["id"]))
+        assert stored.client_created_at == BASE + timedelta(minutes=7)
+        assert stored.occurred_at != stored.client_created_at  # the server's date is still the server's
+
+    def test_a_pickup_request_keeps_it_too(self, client_as, citizen, db):
+        record = _send(client_as, citizen, _collection(minutes=3))["results"][0]["record"]
+        assert datetime.fromisoformat(record["client_created_at"]) == BASE + timedelta(minutes=3)
+        assert db.get(Collection, uuid.UUID(record["id"])).client_created_at == BASE + timedelta(minutes=3)
+
+    def test_what_is_created_online_has_none(self, client_as, eca_admin, citizen, recycler, warehouse):
+        online = client_as(citizen).post("/collections", json={
+            "address": "Calle 1", "latitude": "4.47", "longitude": "-74.13", "materials": ["paper"]})
+        assert online.json()["client_created_at"] is None
+
+    def test_the_hash_does_not_depend_on_it(self, client_as, eca_admin, recycler, warehouse, db):
+        from app.domains.weighings import integrity
+        record = _send(client_as, eca_admin, _weighing(recycler, warehouse, minutes=1))["results"][0]["record"]
+        stored = db.get(Weighing, uuid.UUID(record["id"]))
+        assert integrity.matches(stored) is True
+        stored.client_created_at = BASE + timedelta(days=30)
+        assert integrity.matches(stored) is True
+
+    def test_a_time_without_a_zone_is_refused(self, client_as, citizen):
+        operation = _collection()
+        operation["client_created_at"] = "2026-11-03T09:00:00"
+        assert client_as(citizen).post("/sync/batch", json={"operations": [operation]}).status_code == 422
+
+    def test_a_time_in_the_future_is_refused_for_that_operation_only(self, client_as, citizen, db):
+        future = _collection(minutes=0)
+        future["client_created_at"] = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        results = _send(client_as, citizen, future, _collection(minutes=1))["results"]
+        assert [r["status"] for r in results] == ["error", "created"]
+        assert results[0]["error"]["code"] == "timestamp_in_future"
+        assert db.query(Collection).count() == 1

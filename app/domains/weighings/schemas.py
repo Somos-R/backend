@@ -29,6 +29,7 @@ class WeighingResponse(BaseModel):
     validated_by:     uuid.UUID | None
     validated_at:     datetime | None
     occurred_at:            datetime
+    client_created_at: datetime | None  # when the device saved it, for what came through POST /sync/batch
     created_at:       datetime
     total_value:      Decimal
     # How the seller relates to the ECA. Only `linked` weighings reach an association.

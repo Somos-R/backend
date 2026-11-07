@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 from app.core.config import settings
 
@@ -15,7 +15,9 @@ class SyncOperation(BaseModel):
 
     type: OperationType
     idempotency_key: uuid.UUID  # the device creates it with the record and repeats it on every attempt
-    client_created_at: datetime  # when the device saved it: orders the batch, it is not the record's own date
+    # When the device saved it, with its time zone (a time without one is a 422). It orders the batch and is stored on
+    # the record as a fact; it is not the record's own date.
+    client_created_at: AwareDatetime
     payload: dict[str, Any]  # the body of the endpoint that creates this kind of record
 
 

@@ -35,6 +35,7 @@ class CollectionResponse(BaseModel):
     association_id:      uuid.UUID | None
     rejection_reason:    RejectionReasonResponse | None
     rejected_at:         datetime | None
+    client_created_at:   datetime | None  # when the device saved it, for what came through POST /sync/batch
     created_at:          datetime
     updated_at:          datetime
 
