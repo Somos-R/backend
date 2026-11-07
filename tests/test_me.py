@@ -9,15 +9,15 @@ EXPECTED = {
         "recyclers.view", "weighings.view", "weighings.create", "weighings.review", "weighings.pay",
         "inventory.view", "inventory.edit", "warehouses.create", "transactions.view", "transactions.create",
         "transactions.manage", "transactions.pay", "staff.invite", "staff.view", "staff.manage",
-        "links.request", "links.view",
+        "links.request", "links.view", "eca_routing_profile.view", "eca_routing_profile.edit",
     },
     "eca_operator": {
         "recyclers.view", "weighings.view", "weighings.create", "weighings.review",
-        "inventory.view", "transactions.view",
+        "inventory.view", "transactions.view", "eca_routing_profile.view",
     },
     "eca_warehouse": {
         "recyclers.view", "weighings.view", "inventory.view", "inventory.edit",
-        "transactions.view", "transactions.create", "transactions.manage",
+        "transactions.view", "transactions.create", "transactions.manage", "eca_routing_profile.view",
     },
     "association_admin": {
         "recyclers.view", "recyclers.verify", "weighings.view", "weighings.review", "weighings.pay",

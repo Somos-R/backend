@@ -5,6 +5,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.collections.models import CollectionStatus
+from app.domains.inventory.schemas import unique_material_codes
 
 MAX_MATERIALS = 10
 
@@ -75,13 +76,7 @@ class CreateCollectionRequest(BaseModel):
         }
     )
 
-    @field_validator("materials")
-    @classmethod
-    def unique_codes(cls, codes: list[str]) -> list[str]:
-        """Each material once, in the order given; a code never longer than the catalog allows."""
-        if any(not code or len(code) > 30 for code in codes):
-            raise ValueError("Cada material debe ser un código de 1 a 30 caracteres")
-        return list(dict.fromkeys(codes))
+    unique_codes = field_validator("materials")(unique_material_codes)
 
 
 class CancelCollectionRequest(BaseModel):

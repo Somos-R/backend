@@ -15,6 +15,18 @@ class LinkStatus(str, enum.Enum):
     removed = "removed"  # withdrawn by either side (or the ECA cancelled its request)
 
 
+class Weekday(str, enum.Enum):
+    """A day of an ECA's reception hours, in calendar order (the order the hours are listed in)."""
+
+    monday = "monday"
+    tuesday = "tuesday"
+    wednesday = "wednesday"
+    thursday = "thursday"
+    friday = "friday"
+    saturday = "saturday"
+    sunday = "sunday"
+
+
 class OrganizationStatus(str, enum.Enum):
     """Where an organization is in its onboarding. Only `approved` organizations operate."""
 

@@ -4,21 +4,31 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.permissions import ASSOC_ADMIN, ECA_ADMIN, ORG_ADMINS
+from app.core.permissions import (
+    ASSOC_ADMIN,
+    ECA_ADMIN,
+    ECA_ROUTING_PROFILE_READ,
+    ECA_ROUTING_PROFILE_WRITE,
+    ORG_ADMINS,
+)
 from app.core.rate_limit import limiter, register_limit
 from app.core.security import require_roles
 from app.domains.organizations import service
 from app.domains.organizations.docs import (
     ACCEPT_LINK_DOCS,
     DIRECTORY_DOCS,
+    GET_ECA_ROUTING_PROFILE_DOCS,
     LIST_LINKS_DOCS,
     REJECT_LINK_DOCS,
     REMOVE_LINK_DOCS,
     REQUEST_LINK_DOCS,
+    UPDATE_ECA_ROUTING_PROFILE_DOCS,
 )
 from app.domains.organizations.enums import LinkStatus
 from app.domains.organizations.schemas import (
     DirectoryResponse,
+    EcaRoutingProfileRequest,
+    EcaRoutingProfileResponse,
     LinkListResponse,
     LinkResponse,
     RejectLinkRequest,
@@ -27,6 +37,7 @@ from app.domains.organizations.schemas import (
 from app.domains.users.models import User
 
 router = APIRouter(tags=["links"])
+ecas_router = APIRouter(prefix="/ecas", tags=["ecas"])
 
 
 @router.get("/directory/associations", response_model=DirectoryResponse, **DIRECTORY_DOCS)
@@ -96,3 +107,22 @@ def remove_link(
     actor: User = Depends(require_roles(*ORG_ADMINS)),
 ):
     return service.remove(db, actor, link_id)
+
+
+@ecas_router.get("/me/routing-profile", response_model=EcaRoutingProfileResponse, **GET_ECA_ROUTING_PROFILE_DOCS)
+def get_routing_profile(
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*ECA_ROUTING_PROFILE_READ)),
+):
+    return service.get_routing_profile(db, actor)
+
+
+@ecas_router.put("/me/routing-profile", response_model=EcaRoutingProfileResponse, **UPDATE_ECA_ROUTING_PROFILE_DOCS)
+@limiter.limit(register_limit)
+def update_routing_profile(
+    request: Request,
+    body: EcaRoutingProfileRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_roles(*ECA_ROUTING_PROFILE_WRITE)),
+):
+    return service.update_routing_profile(db, actor, body)

@@ -52,6 +52,9 @@ class Action:
     LINK_REJECTED = "link.rejected"
     LINK_REMOVED = "link.removed"
 
+    # --- Organizations ---
+    ECA_ROUTING_PROFILE_UPDATED = "eca.routing_profile_updated"
+
     # --- Weighings ---
     WEIGHING_CREATED = "weighing.created"
     WEIGHING_VALIDATED = "weighing.validated"

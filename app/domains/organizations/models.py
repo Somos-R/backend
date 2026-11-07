@@ -13,7 +13,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -59,6 +59,10 @@ class Organization(Base):
     # An ECA's drop-off point, where routes close. GiST-indexed in the migration; query it through app/core/spatial.py.
     location: Mapped[object | None] = mapped_column(
         Geography(geometry_type="POINT", srid=4326, spatial_index=False), nullable=True)
+    # When an ECA receives material, as [{"day": "monday", "opens_at": "08:00", "closes_at": "17:00"}, ...], and
+    # the `materials` catalog codes it accepts. NULL until the ECA declares them; route planning reads both.
+    reception_hours: Mapped[list[dict[str, str]] | None] = mapped_column(JSONB, nullable=True)
+    accepted_materials: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
 
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
