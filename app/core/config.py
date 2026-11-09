@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     rate_limit_admin: str = "60/minute"  # the rest of /admin
     rate_limit_applications: str = "5/minute"  # public: start an application, ask for the access link again
     rate_limit_application_uploads: str = "20/minute"  # public: attach or remove an application's documents
+    # General budgets for every endpoint, per account (or per IP without a valid token)
+    rate_limit_reads: str = "120/minute"
+    rate_limit_writes: str = "30/minute"  # POST, PUT, PATCH, DELETE
+    rate_limit_exports: str = "10/minute"  # CSV exports
     # Account lockout: after this many consecutive failures the account is locked for
     # 1 minute, doubling with every further failure up to the cap.
     login_max_attempts: int = 5

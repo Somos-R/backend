@@ -13,7 +13,11 @@ from app.core.context import get_request_id
 from app.core.errors import http_exception_handler, validation_exception_handler
 from app.core.health import router as health_router
 from app.core.metrics import router as metrics_router
-from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.rate_limit import (
+    GeneralRateLimitMiddleware,
+    limiter,
+    rate_limit_exceeded_handler,
+)
 from app.core.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.sentry import init_sentry
@@ -89,8 +93,10 @@ def create_app() -> FastAPI:
             headers={REQUEST_ID_HEADER: request_id or ""},
         )
 
-    # Middleware added last runs first: request context, host check, CORS, then security headers.
+    # Middleware added last runs first: request context, host check, CORS, security headers, then
+    # the general rate limit (inside CORS and security headers, so its 429 carries both).
     hsts = settings.hsts_max_age if settings.app_env != "dev" else None
+    app.add_middleware(GeneralRateLimitMiddleware)
     app.add_middleware(SecurityHeadersMiddleware, hsts_max_age=hsts)
     app.add_middleware(
         CORSMiddleware,
