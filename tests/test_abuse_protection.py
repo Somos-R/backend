@@ -220,3 +220,67 @@ class TestConstantTimeLogin:
         user = factories.make_user(
             db, "recycler", verification_status=VerificationStatus.verified, password_hash="")
         assert _login(client, user.email, "").status_code == 401
+
+
+# --- General limit per account (reads, writes, CSV exports) -------------------------------
+
+@pytest.fixture
+def general_limits(monkeypatch):
+    """The general budgets on, with tiny limits; counters are wiped before and after."""
+    monkeypatch.setattr(limiter, "enabled", True)
+    monkeypatch.setattr(settings, "rate_limit_reads", "3/minute")
+    monkeypatch.setattr(settings, "rate_limit_writes", "2/minute")
+    monkeypatch.setattr(settings, "rate_limit_exports", "1/minute")
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
+def _statuses(call, times):
+    return [call().status_code for _ in range(times)]
+
+
+class TestGeneralRateLimit:
+    def test_reads_are_limited_per_account(self, client_as, eca_admin, general_limits):
+        c = client_as(eca_admin)
+        assert _statuses(lambda: c.get("/weighings"), 4) == [200, 200, 200, 429]
+
+    def test_the_429_is_the_usual_one(self, client_as, eca_admin, general_limits):
+        c = client_as(eca_admin)
+        for _ in range(3):
+            c.get("/weighings")
+        r = c.get("/weighings")
+        assert r.status_code == 429
+        assert r.json()["code"] == "rate_limited"
+        assert r.headers["Retry-After"] == "60"
+        assert r.headers["X-Content-Type-Options"] == "nosniff"  # it passes through the security headers
+
+    def test_writes_have_their_own_budget(self, client_as, eca_admin, general_limits):
+        c = client_as(eca_admin)
+        assert _statuses(lambda: c.patch("/users/me", json={"phone": "3001234567"}), 3)[-1] == 429
+        assert c.get("/weighings").status_code == 200
+
+    def test_csv_exports_have_a_stricter_budget(self, client_as, eca_admin, general_limits):
+        c = client_as(eca_admin)
+        assert _statuses(lambda: c.get("/weighings/export.csv"), 2) == [200, 429]
+        assert c.get("/transactions/export.csv").status_code == 429  # one budget for every export
+        assert c.get("/weighings").status_code == 200
+
+    def test_accounts_behind_the_same_ip_do_not_share_a_budget(self, db, client_as, general_limits):
+        first, second = factories.make_user(db, "citizen"), factories.make_user(db, "citizen")
+        assert _statuses(lambda: client_as(first).get("/auth/me"), 4)[-1] == 429
+        assert client_as(second).get("/auth/me").status_code == 200
+
+    def test_without_a_valid_token_it_counts_by_ip(self, client, general_limits):
+        forged = {"Authorization": "Bearer not-a-signed-token"}
+        assert client.get("/catalogs/roles").status_code == 200
+        assert client.get("/catalogs/roles", headers=forged).status_code == 200
+        assert client.get("/catalogs/roles").status_code == 200
+        assert client.get("/catalogs/roles", headers=forged).status_code == 429
+
+    def test_health_probes_are_exempt(self, client, general_limits):
+        assert set(_statuses(lambda: client.get("/health/live"), 5)) == {200}
+
+    def test_off_when_the_limiter_is_disabled(self, client_as, eca_admin):
+        c = client_as(eca_admin)
+        assert set(_statuses(lambda: c.get("/weighings"), 10)) == {200}
