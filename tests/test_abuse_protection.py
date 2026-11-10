@@ -71,6 +71,13 @@ class TestRateLimiting:
         codes = [client.post("/auth/activate", json=body).status_code for _ in range(3)]
         assert codes == [400, 400, 429]
 
+    def test_resend_verification_is_limited(self, client_as, db, outbox, rate_limited):
+        user = factories.make_user(db, "citizen")
+        c = client_as(user)
+        codes = [c.post("/auth/resend-verification").status_code for _ in range(3)]
+        assert codes == [200, 200, 429]
+        assert len(outbox) == 2  # the refused call sends nothing
+
     def test_limits_are_independent_per_endpoint(self, client, rate_limited):
         for _ in range(4):
             _login(client, "a@test.com")
