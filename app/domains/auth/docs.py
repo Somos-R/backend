@@ -201,6 +201,7 @@ RESEND_VERIFICATION_DOCS: dict[str, Any] = {
 Envía un nuevo enlace de confirmación al correo del usuario autenticado y anula el anterior.
 Si el correo ya está confirmado no envía nada. Requiere autenticación con **Bearer token**.
 """,
+    "responses": TOO_MANY_REQUESTS,
 }
 
 FORGOT_PASSWORD_DOCS: dict[str, Any] = {

@@ -111,7 +111,9 @@ def verify_email(request: Request, body: TokenRequest, db: Session = Depends(get
 
 
 @router.post("/resend-verification", response_model=MessageResponse, **RESEND_VERIFICATION_DOCS)
+@limiter.limit(token_flow_limit)
 def resend_verification(
+    request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
