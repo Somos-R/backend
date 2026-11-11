@@ -301,6 +301,26 @@ class TestCollectionRequestsReachOnlyTheirAssociation:
         r = client_as(world.assoc_x.operator).post(f"/collections/{created['id']}/reject", json=body)
         assert r.status_code == 200 and r.json()["status"] == "rejected"
 
+    def test_a_resubmitted_request_goes_back_only_to_its_own_association(self, client_as, world, db):
+        from app.domains.collections.models import Collection
+
+        body = {"address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"]}
+        created = client_as(world.citizen).post("/collections", json=body).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = world.assoc_x.org.id
+        db.commit()
+        client_as(world.assoc_x.operator).post(
+            f"/collections/{created['id']}/reject", json={"reason_code": "incomplete_address"})
+
+        for staff in (world.assoc_x.operator, world.assoc_y.admin, world.eca_a.admin):
+            assert client_as(staff).put(f"/collections/{created['id']}/resubmit", json=body).status_code == 403
+        r = client_as(world.citizen).put(f"/collections/{created['id']}/resubmit", json=body)
+        assert r.status_code == 200 and r.json()["association_id"] == str(world.assoc_x.org.id)
+
+        assert client_as(world.assoc_y.operator).get(
+            f"/associations/{world.assoc_y.org.id}/collections").json()["total"] == 0
+        inbox_x = client_as(world.assoc_x.operator).get(f"/associations/{world.assoc_x.org.id}/collections").json()
+        assert [item["id"] for item in inbox_x["items"]] == [created["id"]]
+
     def test_each_association_sees_only_its_own_inbox(self, client_as, world, db):
         from app.domains.collections.models import Collection
 

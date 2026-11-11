@@ -458,6 +458,28 @@ class TestBusinessEvents:
             f"/collections/{created['id']}/reject", json={"reason_code": "invalid_contact"}).status_code == 409
         assert len(rows(db, Action.COLLECTION_REJECTED)) == 1
 
+    def test_collection_resubmission_records_materials_and_the_previous_reason(self, client_as, citizen, db):
+        from app.domains.collections.models import Collection
+
+        operator = factories.make_actor(db, "association_operator")
+        body = {"address": "Calle 45 # 12-30", "latitude": "4.6", "longitude": "-74.1", "materials": ["paper"],
+                "notes": "Apartamento 301"}
+        created = client_as(citizen).post("/collections", json=body).json()
+        db.get(Collection, uuid.UUID(created["id"])).association_id = operator.organization_id
+        db.commit()
+        client_as(operator).post(f"/collections/{created['id']}/reject", json={"reason_code": "incomplete_address"})
+
+        r = client_as(citizen).put(f"/collections/{created['id']}/resubmit", json={**body, "materials": ["glass"]})
+        assert r.status_code == 200, r.text
+        entry = only(db, Action.COLLECTION_RESUBMITTED)
+        assert entry.actor_id == citizen.id and entry.target_id == created["id"]
+        assert entry.details == {"materials": ["glass"], "previous_reason_code": "incomplete_address",
+                                 "resubmission": 1}
+        assert "Calle 45" not in json.dumps(entry.details) and "Apartamento" not in json.dumps(entry.details)
+
+        assert client_as(citizen).put(f"/collections/{created['id']}/resubmit", json=body).status_code == 409
+        assert len(rows(db, Action.COLLECTION_RESUBMITTED)) == 1
+
     def test_eca_routing_profile_update_records_materials_but_never_coordinates(self, client_as, eca_admin, db):
         r = client_as(eca_admin).put("/ecas/me/routing-profile", json={
             "latitude": "4.5981", "longitude": "-74.0758", "accepted_materials": ["paper"],

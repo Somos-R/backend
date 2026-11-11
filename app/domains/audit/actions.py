@@ -73,6 +73,7 @@ class Action:
     COLLECTION_REQUESTED = "collection.requested"
     COLLECTION_CANCELLED = "collection.cancelled"
     COLLECTION_REJECTED = "collection.rejected"
+    COLLECTION_RESUBMITTED = "collection.resubmitted"
 
     # --- Inventory ---
     INVENTORY_UPDATED = "inventory.updated"
