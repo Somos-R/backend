@@ -6,18 +6,25 @@ from fastapi import status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.core.errors import ApiError
 from app.core.pagination import paginate
 from app.core.spatial import distance_meters, nearest_first, point, within_radius
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
-from app.domains.collections.models import Collection, CollectionStatus, RejectionReason
+from app.domains.collections.models import (
+    Collection,
+    CollectionRejection,
+    CollectionStatus,
+    RejectionReason,
+)
 from app.domains.collections.schemas import (
     CancelCollectionRequest,
     CollectionResponse,
     CreateCollectionRequest,
     NearbyCollectionResponse,
     RejectCollectionRequest,
+    ResubmitCollectionRequest,
 )
 from app.domains.inventory.service import ensure_material_is_active
 from app.domains.organizations.enums import OrganizationStatus, OrganizationType
@@ -82,28 +89,36 @@ def assign_association(db: Session, latitude: object, longitude: object) -> uuid
     return ids[0] if len(ids) == 1 else None
 
 
-def create_collection(
-    db: Session, actor: User, request: CreateCollectionRequest, client_created_at: datetime | None = None,
-) -> Collection:
+def _ensure_valid_request(db: Session, request: CreateCollectionRequest) -> None:
     if request.scheduled_date is not None and request.scheduled_date < _local_today():
         raise ApiError("scheduled_date_in_past", status_code=422,
                        detail="La fecha programada no puede ser anterior a hoy")
     for code in request.materials:
         ensure_material_is_active(db, code)
 
+
+def _apply_request(collection: Collection, request: CreateCollectionRequest) -> None:
+    """What the requester says about the pickup."""
+    collection.address = request.address
+    collection.latitude = request.latitude
+    collection.longitude = request.longitude
+    collection.location = point(request.latitude, request.longitude)
+    collection.materials = request.materials
+    collection.notes = request.notes
+    collection.scheduled_date = request.scheduled_date
+
+
+def create_collection(
+    db: Session, actor: User, request: CreateCollectionRequest, client_created_at: datetime | None = None,
+) -> Collection:
+    _ensure_valid_request(db, request)
     collection = Collection(
         requester_id=actor.id,
         status=CollectionStatus.pending_assignment,
         association_id=assign_association(db, request.latitude, request.longitude),
-        address=request.address,
-        latitude=request.latitude,
-        longitude=request.longitude,
-        location=point(request.latitude, request.longitude),
-        materials=request.materials,
-        notes=request.notes,
-        scheduled_date=request.scheduled_date,
         client_created_at=client_created_at,
     )
+    _apply_request(collection, request)
     db.add(collection)
     db.flush()
     # Material codes only: the address and the notes are personal data and stay out of the trail.
@@ -214,12 +229,87 @@ def reject_collection(
         raise ApiError("collection_not_rejectable", status_code=status.HTTP_409_CONFLICT,
                        detail=f"Solo se puede rechazar una solicitud pendiente de asignación. "
                               f"Estado actual: {collection.status.value}")
+    now = datetime.now(timezone.utc)
     collection.status = CollectionStatus.rejected
     collection.rejection_reason = reason
     collection.rejected_by = actor.id
-    collection.rejected_at = datetime.now(timezone.utc)
+    collection.rejected_at = now
+    db.add(CollectionRejection(collection_id=collection.id, reason_code=reason.code, rejected_by=actor.id,
+                               rejected_at=now))
     audit.record(db, Action.COLLECTION_REJECTED, actor=actor, target_type="collection", target_id=collection.id,
                  details={"reason_code": reason.code})
+    db.commit()
+    db.refresh(collection)
+    return collection
+
+
+def _resubmission_count(db: Session, collection_id: uuid.UUID) -> int:
+    return db.scalar(
+        select(func.count()).select_from(CollectionRejection)
+        .where(CollectionRejection.collection_id == collection_id, CollectionRejection.resubmitted_at.is_not(None))
+    ) or 0
+
+
+def _ensure_resubmittable(db: Session, collection: Collection) -> RejectionReason:
+    """The standing rejection's reason, when the requester may still correct the request and send it again."""
+    if collection.status != CollectionStatus.rejected:
+        raise ApiError("collection_not_resubmittable", status_code=status.HTTP_409_CONFLICT,
+                       detail=f"Solo se puede reenviar una solicitud rechazada. "
+                              f"Estado actual: {collection.status.value}")
+    reason = collection.rejection_reason
+    if reason is None or not reason.is_correctable:
+        raise ApiError("collection_rejection_final", status_code=status.HTTP_409_CONFLICT,
+                       detail="El motivo del rechazo es definitivo: la solicitud no se puede reenviar")
+    if _resubmission_count(db, collection.id) >= settings.collection_max_resubmissions:
+        raise ApiError("collection_resubmission_limit_reached", status_code=status.HTTP_409_CONFLICT,
+                       detail="Se alcanzó el máximo de reenvíos de esta solicitud")
+    return reason
+
+
+def _close_rejection(db: Session, collection: Collection, reason: RejectionReason) -> None:
+    """Mark the standing rejection as resubmitted, so it counts toward the limit and stays in the history."""
+    now = datetime.now(timezone.utc)
+    rejection = db.scalars(
+        select(CollectionRejection)
+        .where(CollectionRejection.collection_id == collection.id, CollectionRejection.resubmitted_at.is_(None))
+        .order_by(CollectionRejection.rejected_at.desc(), CollectionRejection.id.desc())
+        .limit(1)
+    ).one_or_none()
+    if rejection is None:
+        # A rejection the history never saw (it predates it): record it now so the history stays whole.
+        rejection = CollectionRejection(
+            collection_id=collection.id, reason_code=reason.code,
+            rejected_by=collection.rejected_by, rejected_at=collection.rejected_at or now)
+        db.add(rejection)
+    rejection.resubmitted_at = now
+
+
+def resubmit_collection(
+    db: Session, actor: User, collection_id: uuid.UUID, request: ResubmitCollectionRequest,
+) -> Collection:
+    """The requester corrects a request rejected for a correctable reason and sends it back to the queue.
+
+    It returns to `pending_assignment` keeping its `created_at`, so it does not lose its place in the association's
+    inbox (oldest first). The rejection stays in `collection_rejections`, marked as resubmitted.
+    """
+    collection = _locked(db, collection_id, Collection.requester_id == actor.id)
+    reason = _ensure_resubmittable(db, collection)
+    _ensure_valid_request(db, request)
+
+    _close_rejection(db, collection, reason)
+    _apply_request(collection, request)
+    # It goes back to the association that rejected it; only one that never had an association gets one now.
+    if collection.association_id is None:
+        collection.association_id = assign_association(db, request.latitude, request.longitude)
+    collection.status = CollectionStatus.pending_assignment
+    collection.rejection_reason = None
+    collection.rejected_by = None
+    collection.rejected_at = None
+    db.flush()
+    # Material codes and the reason only: the address and the notes are personal data and stay out of the trail.
+    audit.record(db, Action.COLLECTION_RESUBMITTED, actor=actor, target_type="collection", target_id=collection.id,
+                 details={"materials": request.materials, "previous_reason_code": reason.code,
+                          "resubmission": _resubmission_count(db, collection.id)})
     db.commit()
     db.refresh(collection)
     return collection

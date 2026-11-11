@@ -80,6 +80,10 @@ class CreateCollectionRequest(BaseModel):
     unique_codes = field_validator("materials")(unique_material_codes)
 
 
+class ResubmitCollectionRequest(CreateCollectionRequest):
+    """The corrected request, whole: it replaces what was sent before. Who asks is still the signed-in account."""
+
+
 class CancelCollectionRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=200)
 

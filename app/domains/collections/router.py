@@ -18,6 +18,7 @@ from app.domains.collections.docs import (
     NEARBY_COLLECTIONS_DOCS,
     REJECT_COLLECTION_DOCS,
     REJECTION_REASONS_DOCS,
+    RESUBMIT_COLLECTION_DOCS,
 )
 from app.domains.collections.models import CollectionStatus
 from app.domains.collections.schemas import (
@@ -28,6 +29,7 @@ from app.domains.collections.schemas import (
     NearbyCollectionListResponse,
     RejectCollectionRequest,
     RejectionReasonResponse,
+    ResubmitCollectionRequest,
 )
 from app.domains.users.models import User
 
@@ -108,6 +110,16 @@ def cancel_collection(
     actor: User = Depends(get_requester),
 ):
     return service.cancel_collection(db, actor, collection_id, body or CancelCollectionRequest())
+
+
+@router.put("/{collection_id}/resubmit", response_model=CollectionResponse, **RESUBMIT_COLLECTION_DOCS)
+def resubmit_collection(
+    collection_id: uuid.UUID,
+    body: ResubmitCollectionRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_requester),
+):
+    return service.resubmit_collection(db, actor, collection_id, body)
 
 
 @router.post("/{collection_id}/reject", response_model=CollectionResponse, **REJECT_COLLECTION_DOCS)

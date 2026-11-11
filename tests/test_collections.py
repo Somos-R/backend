@@ -1,6 +1,6 @@
-"""Pickup requests (B-1.1, REC-01, REC-02): a citizen or a building asks, only they see their own, and they may
-cancel while nobody has been assigned; the association it is assigned to sees it in its inbox and may reject it
-with a reason of the catalog."""
+"""Pickup requests (B-1.1, REC-01, REC-02, REC-03): a citizen or a building asks, only they see their own, and they
+may cancel while nobody has been assigned; the association it is assigned to sees it in its inbox and may reject it
+with a reason of the catalog; a request rejected for a correctable reason may be corrected and sent again."""
 import uuid
 from datetime import timedelta
 
@@ -9,7 +9,12 @@ from geoalchemy2 import Geometry
 from sqlalchemy import cast, func, select
 
 from app.domains.collections import service as collections_service
-from app.domains.collections.models import Collection, CollectionStatus, RejectionReason
+from app.domains.collections.models import (
+    Collection,
+    CollectionRejection,
+    CollectionStatus,
+    RejectionReason,
+)
 from tests import factories
 
 BODY = {
@@ -376,6 +381,147 @@ class TestReject:
         few = measure()
         reject_more(9)
         assert measure() == few
+
+
+def _resubmit(client, collection_id, **changes):
+    return client.put(f"/collections/{collection_id}/resubmit", json={**BODY, **changes})
+
+
+def _history(db, collection_id) -> list[CollectionRejection]:
+    return list(db.scalars(
+        select(CollectionRejection)
+        .where(CollectionRejection.collection_id == uuid.UUID(collection_id))
+        .order_by(CollectionRejection.rejected_at, CollectionRejection.id)))
+
+
+class TestResubmit:
+    def _rejected(self, client_as, citizen, operator, db, reason_code="incomplete_address") -> dict:
+        created = _assigned_to(client_as(citizen), db, operator)
+        assert _reject(client_as(operator), created["id"], reason_code).status_code == 200
+        return created
+
+    def test_a_correctable_rejection_is_corrected_and_goes_back_to_the_queue(
+        self, client_as, citizen, association_operator, db,
+    ):
+        created = self._rejected(client_as, citizen, association_operator, db)
+        r = _resubmit(client_as(citizen), created["id"], address="Calle 45 # 12-30 Apto 301, Bogotá",
+                      materials=["glass"], notes=None)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "pending_assignment"
+        assert body["address"] == "Calle 45 # 12-30 Apto 301, Bogotá"
+        assert body["materials"] == ["glass"] and body["notes"] is None
+        assert body["rejection_reason"] is None and body["rejected_at"] is None
+        assert body["created_at"] == created["created_at"]
+        assert body["association_id"] == str(association_operator.organization_id)
+        assert db.get(Collection, uuid.UUID(created["id"])).rejected_by is None
+
+    def test_the_corrected_point_moves_the_postgis_location(self, client_as, citizen, association_operator, db):
+        created = self._rejected(client_as, citizen, association_operator, db)
+        _resubmit(client_as(citizen), created["id"], latitude="4.500000", longitude="-74.100000")
+        as_geometry = cast(Collection.location, Geometry)
+        lon, lat = db.execute(
+            select(func.ST_X(as_geometry), func.ST_Y(as_geometry))
+            .where(Collection.id == uuid.UUID(created["id"]))).one()
+        assert (round(lon, 6), round(lat, 6)) == (-74.1, 4.5)
+
+    def test_it_keeps_its_place_in_the_association_inbox(self, client_as, citizen, association_operator, db):
+        c = client_as(citizen)
+        oldest = self._rejected(client_as, citizen, association_operator, db)
+        newer = _assigned_to(c, db, association_operator)
+        _created_ago(db, oldest["id"], 48)
+        _created_ago(db, newer["id"], 24)
+        assert _resubmit(c, oldest["id"]).status_code == 200
+
+        inbox = _inbox(client_as(association_operator), association_operator.organization_id,
+                       status="pending_assignment").json()
+        assert [item["id"] for item in inbox["items"]] == [oldest["id"], newer["id"]]
+
+    def test_every_rejection_and_resubmission_stays_in_the_history(
+        self, client_as, citizen, association_operator, db,
+    ):
+        created = self._rejected(client_as, citizen, association_operator, db, "incomplete_address")
+        _resubmit(client_as(citizen), created["id"])
+        assert _reject(client_as(association_operator), created["id"], "invalid_contact").status_code == 200
+
+        history = _history(db, created["id"])
+        assert [row.reason_code for row in history] == ["incomplete_address", "invalid_contact"]
+        assert all(row.rejected_by == association_operator.id for row in history)
+        assert history[0].resubmitted_at is not None and history[1].resubmitted_at is None
+
+    def test_a_final_rejection_cannot_be_resubmitted(self, client_as, citizen, association_operator, db):
+        created = self._rejected(client_as, citizen, association_operator, db, "outside_coverage")
+        r = _resubmit(client_as(citizen), created["id"])
+        assert r.status_code == 409 and r.json()["code"] == "collection_rejection_final"
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.rejected
+        assert _history(db, created["id"])[0].resubmitted_at is None
+
+    @pytest.mark.parametrize("current", [
+        CollectionStatus.pending_assignment, CollectionStatus.assigned, CollectionStatus.cancelled])
+    def test_only_a_rejected_request_can_be_resubmitted(self, client_as, citizen, db, current):
+        created = _create(client_as(citizen)).json()
+        _set_status(db, created["id"], current)
+        r = _resubmit(client_as(citizen), created["id"])
+        assert r.status_code == 409 and r.json()["code"] == "collection_not_resubmittable"
+
+    def test_the_resubmissions_are_limited(self, client_as, citizen, association_operator, db, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "collection_max_resubmissions", 2)
+        created = self._rejected(client_as, citizen, association_operator, db)
+        for _ in range(2):
+            assert _resubmit(client_as(citizen), created["id"]).status_code == 200
+            assert _reject(client_as(association_operator), created["id"]).status_code == 200
+        r = _resubmit(client_as(citizen), created["id"])
+        assert r.status_code == 409 and r.json()["code"] == "collection_resubmission_limit_reached"
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.rejected
+
+    def test_a_rejection_from_before_the_history_is_recorded_when_resubmitted(self, client_as, citizen, db):
+        created = _create(client_as(citizen)).json()
+        collection = db.get(Collection, uuid.UUID(created["id"]))
+        collection.status, collection.rejection_reason_code = CollectionStatus.rejected, "invalid_contact"
+        db.commit()
+        assert _resubmit(client_as(citizen), created["id"]).status_code == 200
+        [row] = _history(db, created["id"])
+        assert row.reason_code == "invalid_contact" and row.resubmitted_at is not None
+
+    def test_a_request_without_an_association_is_assigned_like_a_new_one(self, client_as, citizen, db):
+        created = _create(client_as(citizen)).json()  # no association exists yet: nobody is assigned
+        association = factories.make_organization(db, "association")
+        _set_status(db, created["id"], CollectionStatus.rejected)
+        db.get(Collection, uuid.UUID(created["id"])).rejection_reason_code = "incomplete_address"
+        db.commit()
+        r = _resubmit(client_as(citizen), created["id"])
+        assert r.status_code == 200 and r.json()["association_id"] == str(association.id)
+
+    def test_the_corrected_request_follows_the_rules_of_a_new_one(
+        self, client_as, citizen, association_operator, db,
+    ):
+        created = self._rejected(client_as, citizen, association_operator, db)
+        c = client_as(citizen)
+        yesterday = collections_service._local_today() - timedelta(days=1)
+        r = _resubmit(c, created["id"], scheduled_date=str(yesterday))
+        assert r.status_code == 422 and r.json()["code"] == "scheduled_date_in_past"
+        assert _resubmit(c, created["id"], materials=["kryptonite"]).status_code == 404
+        assert _resubmit(c, created["id"], address="x").json()["code"] == "validation_error"
+        assert db.get(Collection, uuid.UUID(created["id"])).status == CollectionStatus.rejected
+        assert _history(db, created["id"])[0].resubmitted_at is None
+
+    def test_someone_elses_request_does_not_exist(self, client_as, citizen, association_operator, db):
+        created = self._rejected(client_as, citizen, association_operator, db)
+        other = factories.make_user(db, "citizen")
+        r = _resubmit(client_as(other), created["id"])
+        assert r.status_code == 404 and r.json()["code"] == "collection_not_found"
+        assert _resubmit(client_as(citizen), uuid.uuid4()).status_code == 404
+
+    @pytest.mark.parametrize("kind", ["recycler", "association_operator", "eca_admin"])
+    def test_only_requesters_may_resubmit(self, client_as, citizen, db, kind):
+        created = _create(client_as(citizen)).json()
+        r = _resubmit(client_as(factories.make_actor(db, kind)), created["id"])
+        assert r.status_code == 403 and r.json()["code"] == "collections_requesters_only"
+
+    def test_a_token_is_required(self, client):
+        assert client.put(f"/collections/{uuid.uuid4()}/resubmit", json=BODY).status_code == 401
 
 
 def _inbox(client, association_id, **params):

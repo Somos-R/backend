@@ -90,3 +90,22 @@ class Collection(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     rejection_reason: Mapped[RejectionReason | None] = relationship()
+
+
+class CollectionRejection(Base):
+    """One rejection of a pickup request, kept after the requester corrects it and sends it again: the history of
+    every rejection and resubmission. `collections` only holds the current state."""
+
+    __tablename__ = "collection_rejections"
+    __table_args__ = (Index("ix_collection_rejections_collection_rejected", "collection_id", "rejected_at"),)
+
+    id:            Mapped[uuid.UUID]        = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    collection_id: Mapped[uuid.UUID]        = mapped_column(
+        UUID(as_uuid=True), ForeignKey("collections.id"), nullable=False)
+    reason_code:   Mapped[str]              = mapped_column(
+        String(40), ForeignKey("rejection_reasons.code"), nullable=False)
+    # Null only for rejections copied from before this table existed that did not record who rejected.
+    rejected_by:   Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    rejected_at:   Mapped[datetime]         = mapped_column(DateTime(timezone=True), nullable=False)
+    # When the requester sent the corrected request back to the queue; null while the rejection stands.
+    resubmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

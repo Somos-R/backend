@@ -61,6 +61,33 @@ caracteres). En cualquier otro estado (ya asignada a una ruta, rechazada o cance
 """,
 }
 
+RESUBMIT_COLLECTION_DOCS: dict[str, Any] = {
+    "summary": "Corregir y reenviar una solicitud rechazada",
+    "description": f"""
+Quien pidió la recolección corrige una solicitud **rechazada por un motivo corregible**
+(`rejection_reason.is_correctable: true`) y la vuelve a enviar. El cuerpo es la solicitud completa ya corregida,
+con los mismos campos y reglas que `POST /collections` (`address`, `latitude`, `longitude`, `materials`, `notes`,
+`scheduled_date`): reemplaza lo enviado antes.
+
+La solicitud vuelve a `pending_assignment` **conservando su `created_at` original**, así que no pierde su lugar en
+la bandeja de la asociación (ordenada de la más antigua a la más reciente). `rejection_reason` y `rejected_at`
+vuelven a `null`, y vuelve a la misma asociación (`association_id` no cambia; solo si no tenía una se le asigna
+como al crearla). Cada rechazo y cada reenvío quedan
+en el historial (`collection_rejections`).
+
+Errores:
+- `409 collection_not_resubmittable`: la solicitud no está `rejected`.
+- `409 collection_rejection_final`: el motivo del rechazo es definitivo; la solicitud queda cerrada.
+- `409 collection_resubmission_limit_reached`: ya se reenvió el máximo de veces (hoy 3,
+  `COLLECTION_MAX_RESUBMISSIONS`).
+- `404 material_not_found`, `400 material_inactive`, `422 scheduled_date_in_past`, `422 validation_error`.
+
+Queda auditado como `collection.resubmitted` (códigos de material, motivo anterior y número de reenvío; nunca la
+dirección ni las notas).
+{_WHO}
+""",
+}
+
 REJECTION_REASONS_DOCS: dict[str, Any] = {
     "summary": "Motivos de rechazo de una solicitud de recolección",
     "description": """
@@ -80,7 +107,8 @@ REJECT_COLLECTION_DOCS: dict[str, Any] = {
     "description": """
 La asociación rechaza una solicitud que le fue asignada y sigue en `pending_assignment`, con un motivo del
 catálogo (`reason_code`, ver `GET /collections/rejection-reasons`), nunca texto libre. La solicitud pasa a
-`rejected` y quien la pidió ve el motivo, y si puede corregirla, en su detalle.
+`rejected` y quien la pidió ve el motivo, y si puede corregirla, en su detalle; si el motivo es corregible, puede
+reenviarla con `PUT /collections/{id}/resubmit`. Cada rechazo queda en el historial (`collection_rejections`).
 
 Errores: `422 rejection_reason_not_found` (código desconocido o desactivado), `409 collection_not_rejectable`
 (la solicitud ya no está en `pending_assignment`), `422 validation_error`.
