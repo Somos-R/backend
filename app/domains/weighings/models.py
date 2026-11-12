@@ -55,6 +55,9 @@ class Weighing(Base):
         CheckConstraint("price_per_kg > 0", name="ck_weighings_price_per_kg_positive"),
         # A recycler's history filtered by state, newest first.
         Index("ix_weighings_recycler_status_occurred", "recycler_id", "status", "occurred_at"),
+        Index("idx_weighings_material", "material_code"),
+        Index("idx_weighings_status", "status"),
+        Index("idx_weighings_occurred_at", "occurred_at"),
     )
 
     id:               Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

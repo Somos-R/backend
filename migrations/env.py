@@ -6,11 +6,19 @@ from alembic import context
 
 from app.core.config import settings
 from app.core.database import Base
-import app.domains.users.models  # noqa: F401 — registers models with Base
-import app.domains.organizations.models  # noqa: F401
-import app.domains.applications.models  # noqa: F401
-import app.domains.collections.models  # noqa: F401
+# Every module that declares tables must be imported here so that autogenerate
+# sees them; tests/test_migrations_env.py fails if one is missing.
 import app.core.idempotency  # noqa: F401
+import app.domains.applications.models  # noqa: F401
+import app.domains.audit.models  # noqa: F401
+import app.domains.auth.models  # noqa: F401
+import app.domains.catalogs.models  # noqa: F401
+import app.domains.collections.models  # noqa: F401
+import app.domains.inventory.models  # noqa: F401
+import app.domains.organizations.models  # noqa: F401
+import app.domains.transactions.models  # noqa: F401
+import app.domains.users.models  # noqa: F401
+import app.domains.weighings.models  # noqa: F401
 
 config = context.config
 

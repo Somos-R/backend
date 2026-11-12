@@ -56,6 +56,7 @@ class Collection(Base):
                         name="ck_collections_rejected_has_reason"),
         # A requester's own history filtered by state, newest first.
         Index("ix_collections_requester_status_created", "requester_id", "status", "created_at"),
+        Index("ix_collections_location", "location", postgresql_using="gist"),
     )
 
     id:           Mapped[uuid.UUID]        = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

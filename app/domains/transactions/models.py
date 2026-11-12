@@ -45,6 +45,8 @@ class Transaction(Base):
         CheckConstraint("kg > 0", name="ck_transactions_kg_positive"),
         CheckConstraint("price_per_kg > 0", name="ck_transactions_price_per_kg_positive"),
         Index("ix_transactions_type_status_occurred", "type", "status", "occurred_at"),
+        Index("ix_transactions_status", "status"),
+        Index("ix_transactions_occurred_at", "occurred_at"),
     )
 
     id:            Mapped[uuid.UUID]         = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

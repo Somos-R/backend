@@ -41,6 +41,7 @@ class Organization(Base):
               postgresql_where=text("tax_id IS NOT NULL AND status IN ('approved', 'suspended')")),
         Index("ix_organizations_type_tax_id", "type", "tax_id"),
         Index("ix_organizations_status", "status"),
+        Index("ix_organizations_location", "location", postgresql_using="gist"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
