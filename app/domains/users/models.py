@@ -28,6 +28,9 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         Index("ix_users_user_type_verification", "user_type_code", "verification_status"),
+        Index("idx_users_coverage_area", "coverage_area", postgresql_using="gist"),
+        Index("ix_users_start_location", "start_location", postgresql_using="gist"),
+        Index("ix_users_current_location", "current_location", postgresql_using="gist"),
     )
 
     # --- Common fields ---

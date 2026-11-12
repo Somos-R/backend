@@ -56,6 +56,8 @@ class InventoryItem(Base):
         CheckConstraint("stock_kg >= 0", name="ck_inventory_stock_non_negative"),
         CheckConstraint("stock_min_kg >= 0", name="ck_inventory_stock_min_non_negative"),
         CheckConstraint("price_per_kg >= 0", name="ck_inventory_price_per_kg_non_negative"),
+        Index("idx_inventory_material", "material_code"),
+        Index("idx_inventory_warehouse", "warehouse_id"),
     )
 
     id:                  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
