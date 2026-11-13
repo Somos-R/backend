@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.core.identifiers import nit_check_digit
 from app.core.security import create_access_token, hash_password
 from app.domains.inventory import service as inventory_service
 from app.domains.inventory.models import InventoryItem, Warehouse
@@ -16,6 +17,11 @@ DEFAULT_PASSWORD = "Segura12345"
 
 _counter = itertools.count(1)
 
+
+def valid_nit(number: str) -> str:
+    """A NIT with its correct check digit, as the request schemas require."""
+    return f"{number}-{nit_check_digit(number)}"
+
 # bcrypt is deliberately slow; hash the shared test password once, not per user.
 _PASSWORD_HASH = hash_password(DEFAULT_PASSWORD)
 
@@ -25,7 +31,7 @@ _TYPE_DEFAULTS: dict[str, dict] = {
     "building": {"building_name": "Conjunto Test", "num_units": 10},
     "recycler": {},
     "eca": {},
-    "association": {"association_nit": "900123456-7", "legal_representative": "Rep Test"},
+    "association": {"association_nit": "900123456-8", "legal_representative": "Rep Test"},
     "b2b_client": {"company_name": "Empresa Test", "tax_id": None},
     "platform": {},
 }
@@ -44,7 +50,7 @@ def make_user(db: Session, user_type: str = "citizen", **overrides) -> User:
         **_TYPE_DEFAULTS[user_type],
     }
     if user_type == "b2b_client":
-        data["tax_id"] = f"9{n:08d}-1"
+        data["tax_id"] = valid_nit(f"9{n:08d}")
     if user_type == "recycler":
         data["verification_status"] = VerificationStatus.verified
     if user_type == "recycler" and "organization_id" not in overrides:
@@ -88,7 +94,7 @@ def make_organization(db: Session, org_type: str = "association", **overrides):
         "type": OrganizationType(org_type),
         "status": OrganizationStatus.approved,
         "legal_name": f"Organización {n}",
-        "tax_id": f"9{n:08d}-{n % 10}",
+        "tax_id": valid_nit(f"9{n:08d}"),
     }
     data.update(overrides)
     org = Organization(**data)

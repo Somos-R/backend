@@ -144,7 +144,7 @@ class TestSelfService:
         other = factories.make_user(db, "citizen")
         c = client_as(citizen)
         assert c.get(f"/users/{other.id}").status_code == 403
-        assert c.patch(f"/users/{other.id}", json={"phone": "0"}).status_code == 403
+        assert c.patch(f"/users/{other.id}", json={"phone": "3001234567"}).status_code == 403
 
     @pytest.mark.parametrize("field,value", [
         ("role_code", "eca_admin"), ("permissions", {"all": True}),
@@ -226,7 +226,7 @@ class TestRegisterWithRole:
     def test_eca_admin_cannot_create_association_staff(self, client_as, eca_admin):
         r = client_as(eca_admin).post("/auth/register", json=self._payload(
             user_type_code="association", role_code="association_admin",
-            association_nit="900111222-3", legal_representative="Rep"))
+            association_nit="900111222-1", legal_representative="Rep"))
         assert r.status_code == 403
 
     def test_invalid_role_is_rejected_for_an_admin(self, client_as, eca_admin):

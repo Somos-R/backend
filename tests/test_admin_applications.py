@@ -17,7 +17,7 @@ from tests import factories
 
 CHOSEN_PASSWORD = "Una-clave-nueva-2026"
 COMPLETE = {
-    "tax_id": "900123456-7", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
+    "tax_id": "900123456-8", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
     "contact_phone": "3150000000", "address": "Calle 1 # 2-3", "city": "Bogotá",
     "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567",
 }
@@ -54,7 +54,7 @@ def _apply(client, outbox, org_type="association", name="Asociación Esperanza",
     token = _token(outbox[-1])
     headers = {"X-Application-Token": token}
     if send:
-        fields = {**COMPLETE, "tax_id": f"9{n:08d}-1", "applicant_id_number": f"10{n:08d}", **overrides}
+        fields = {**COMPLETE, "tax_id": factories.valid_nit(f"9{n:08d}"), "applicant_id_number": f"10{n:08d}", **overrides}
         assert client.patch("/applications/current", headers=headers, json=fields).status_code == 200
         factories.attach_required_documents(client, token)
         r = client.post("/applications/current/submit", headers=headers)
@@ -257,7 +257,7 @@ class TestAskingForChanges:
     def test_the_applicant_corrects_and_resends_and_the_feedback_clears(self, bo, client, outbox, sent):
         _decide(bo, sent[0], "request_changes", "El NIT no coincide con el RUT.")
         headers = {"X-Application-Token": _token(outbox[-1])}
-        assert client.patch("/applications/current", headers=headers, json={"tax_id": "900888000-1"}).status_code == 200
+        assert client.patch("/applications/current", headers=headers, json={"tax_id": "900888000-6"}).status_code == 200
         r = client.post("/applications/current/submit", headers=headers)
         assert r.status_code == 200 and r.json()["status"] == "submitted" and r.json()["feedback"] is None
         assert r.json()["submission_count"] == 2

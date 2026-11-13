@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
+from app.core.identifiers import OptionalNit, OptionalPhone
 from app.domains.organizations.enums import OrganizationStatus, OrganizationType
 
 
@@ -11,7 +12,7 @@ class StartApplicationRequest(BaseModel):
     legal_name: str = Field(min_length=2, max_length=255)
     applicant_name: str = Field(min_length=2, max_length=255, description="Quien llena la solicitud")
     applicant_email: EmailStr = Field(description="A este correo llega el enlace para volver a la solicitud")
-    tax_id: str | None = Field(default=None, max_length=50, description="NIT; puede completarse después")
+    tax_id: OptionalNit = Field(default=None, description="NIT con dígito de verificación; puede completarse después")
     consent: bool = Field(description="Aceptación del tratamiento de datos (debe ser true)")
 
     @field_validator("consent")
@@ -28,16 +29,16 @@ class AccessLinkRequest(BaseModel):
 
 class UpdateApplicationRequest(BaseModel):
     legal_name: str | None = Field(default=None, min_length=2, max_length=255)
-    tax_id: str | None = Field(default=None, max_length=50)
+    tax_id: OptionalNit = None
     legal_representative: str | None = Field(default=None, max_length=255)
     contact_email: EmailStr | None = None
-    contact_phone: str | None = Field(default=None, max_length=20)
+    contact_phone: OptionalPhone = None
     address: str | None = Field(default=None, max_length=300)
     city: str | None = Field(default=None, max_length=100)
     applicant_name: str | None = Field(default=None, min_length=2, max_length=255)
     applicant_id_type: str | None = Field(default=None, max_length=10, description="Tipo de documento de quien aplica")
     applicant_id_number: str | None = Field(default=None, max_length=20, description="Documento de quien aplica")
-    applicant_phone: str | None = Field(default=None, max_length=20, description="Teléfono de quien aplica")
+    applicant_phone: OptionalPhone = Field(default=None, description="Teléfono de quien aplica")
 
     @model_validator(mode="after")
     def _something_to_change(self):

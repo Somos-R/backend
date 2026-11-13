@@ -42,7 +42,8 @@ UPDATE_DOCS: dict[str, Any] = {
 Cambia solo los campos enviados (`legal_name`, `tax_id`, `legal_representative`, `contact_email`,
 `contact_phone`, `address`, `city`, `applicant_name`, y los de quien aplica: `applicant_id_type`,
 `applicant_id_number`, `applicant_phone`, porque será el primer administrador); un texto vacío borra el campo
-(menos los nombres). Solo se
+(menos los nombres). `tax_id` va con su dígito de verificación (`900123456-8`) y los teléfonos llevan de 7 a 15
+dígitos con `+` opcional; un formato inválido responde `422`. Solo se
 puede mientras la solicitud está en borrador o con correcciones pedidas: si no, `409 application_locked`.
 `409 organization_already_registered` si el NIT ya es de una organización activa.
 {_TOKEN}

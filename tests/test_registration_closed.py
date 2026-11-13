@@ -13,7 +13,7 @@ def _payload(user_type_code, **extra):
     base = {"user_type_code": user_type_code, "email": f"{user_type_code}@nuevo.com", "password": PASSWORD,
             "full_name": "Persona Nueva", "id_type": "CC", "id_number": "70707070"}
     if user_type_code == "association":
-        base.update(association_nit="900111222-3", legal_representative="Rep Legal")
+        base.update(association_nit="900111222-1", legal_representative="Rep Legal")
     base.update(extra)
     return base
 
@@ -69,7 +69,7 @@ class TestWhatStillWorks:
 
     @pytest.mark.parametrize("kind", ["citizen", "b2b_client", "building"])
     def test_other_types_register_openly_as_before(self, client, kind):
-        extra = {"b2b_client": {"company_name": "Empresa", "tax_id": "900999000-1"},
+        extra = {"b2b_client": {"company_name": "Empresa", "tax_id": "900999000-2"},
                  "building": {"building_name": "Torre Norte", "num_units": 40}}.get(kind, {})
         r = client.post("/auth/register", json=_payload(kind, **extra))
         assert r.status_code == 201, r.text

@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.identifiers import OptionalNit
+from app.core.passwords import Email
 from app.domains.inventory.schemas import MaterialResponse, WarehouseResponse
 from app.domains.transactions.models import TransactionStatus, TransactionType
 
@@ -53,8 +55,8 @@ class CreateSaleRequest(BaseModel):
     kg:            Decimal = Field(max_digits=10, decimal_places=2)
     price_per_kg:     Decimal = Field(max_digits=10, decimal_places=2)
     buyer_name:    str | None = None
-    buyer_nit:     str | None = None
-    buyer_email:   str | None = None
+    buyer_nit:     OptionalNit = None
+    buyer_email:   Email | None = None
 
     @field_validator("kg", "price_per_kg")
     @classmethod
