@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.identifiers import Nit, OptionalPhone
 from app.core.passwords import Email, Password
 from app.domains.users.schemas import UserDetailResponse
 
@@ -15,7 +16,7 @@ class _RegisterBase(BaseModel):
     email: Email
     password: Password
     full_name: str = Field(min_length=1, max_length=255)
-    phone: str | None = Field(default=None, max_length=20)
+    phone: OptionalPhone = None
     id_type: str = Field(max_length=10)
     id_number: str = Field(min_length=3, max_length=20)
 
@@ -128,14 +129,14 @@ class AssociationRegister(_RegisterBase):
                 "phone": "3012345678",
                 "id_type": "CC",
                 "id_number": "79345678",
-                "association_nit": "900123456-7",
+                "association_nit": "900123456-8",
                 "legal_representative": "Roberto Gómez Vargas",
                 "role_code": "association_admin",
             }]
         }
     )
     user_type_code: Literal["association"] = "association"
-    association_nit: str = Field(max_length=50)
+    association_nit: Nit
     legal_representative: str = Field(max_length=255)
     role_code: str | None = None
 
@@ -152,14 +153,14 @@ class B2bClientRegister(_RegisterBase):
                 "id_type": "CC",
                 "id_number": "1098765432",
                 "company_name": "Industrias Verdes S.A.S.",
-                "tax_id": "901234567-8",
+                "tax_id": "901234567-7",
                 "commercial_contact": "Andrés Castillo - Jefe de Compras",
             }]
         }
     )
     user_type_code: Literal["b2b_client"] = "b2b_client"
     company_name: str = Field(max_length=255)
-    tax_id: str = Field(max_length=50)
+    tax_id: Nit
     commercial_contact: str | None = Field(default=None, max_length=255)
 
 

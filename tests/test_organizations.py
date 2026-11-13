@@ -19,7 +19,7 @@ def _staff_payload(user_type="eca", **extra):
     base = {"user_type_code": user_type, "email": f"nuevo{n}@test.com", "password": PASSWORD,
             "full_name": "Persona Nueva", "id_type": "CC", "id_number": f"7{n:07d}"}
     if user_type == "association":
-        base.update({"association_nit": "900123456-7", "legal_representative": "Rep Legal"})
+        base.update({"association_nit": "900123456-8", "legal_representative": "Rep Legal"})
     base.update(extra)
     return base
 
@@ -38,14 +38,14 @@ class TestEntity:
             "draft", "submitted", "in_review", "changes_requested", "approved", "rejected", "suspended"]
 
     def test_a_tax_id_is_unique_within_a_type(self, db):
-        factories.make_organization(db, "association", tax_id="900111222-3")
+        factories.make_organization(db, "association", tax_id="900111222-1")
         with pytest.raises(IntegrityError):
-            factories.make_organization(db, "association", tax_id="900111222-3")
+            factories.make_organization(db, "association", tax_id="900111222-1")
         db.rollback()
 
     def test_the_same_nit_may_exist_as_an_association_and_as_an_eca(self, db):
-        factories.make_organization(db, "association", tax_id="900333444-5")
-        assert factories.make_organization(db, "eca", tax_id="900333444-5").id is not None
+        factories.make_organization(db, "association", tax_id="900333444-0")
+        assert factories.make_organization(db, "eca", tax_id="900333444-0").id is not None
 
     def test_organizations_without_a_tax_id_may_coexist(self, db):
         factories.make_organization(db, "eca", tax_id=None)

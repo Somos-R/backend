@@ -146,6 +146,10 @@ Requiere autenticación con **Bearer token**.
 
 Los campos `role_code`, `permissions`, `association_id` y `employee_code` solo los puede modificar un administrador de la organización sobre *otro* usuario, nunca sobre sí mismo. El `role_code` debe ser un rol válido para el tipo del usuario destino (`eca_*` para `eca`; `association_*` y `route_manager` para `association`).
 
+**Formatos:** `phone` lleva de 7 a 15 dígitos, con `+` opcional al inicio (se quitan espacios, puntos, guiones y
+paréntesis). Un NIT (`association_nit`, `tax_id`) va con su dígito de verificación separado por guion
+(`900123456-8`) y se comprueba ese dígito. Un formato inválido responde `422`.
+
 **Campos no actualizables por este endpoint:** `email`, `password`, `id_type`,
 `id_number`, `user_type_code`, `verification_status`.
 

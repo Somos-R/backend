@@ -24,7 +24,7 @@ from tests import factories
 PDF = factories.PDF
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 COMPLETE = {
-    "tax_id": "900123456-7", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
+    "tax_id": "900123456-8", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
     "contact_phone": "3150000000", "address": "Calle 1 # 2-3", "city": "Bogotá",
     "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567",
 }
@@ -56,7 +56,7 @@ def _apply(client, outbox, send=True):
         "type": "association", "legal_name": f"Asociación {n}", "applicant_name": "Laura Gómez",
         "applicant_email": f"laura{n}@org.org", "consent": True})
     token = _token(outbox[-1])
-    fields = {**COMPLETE, "tax_id": f"9{n:08d}-1", "applicant_id_number": f"10{n:08d}"}
+    fields = {**COMPLETE, "tax_id": factories.valid_nit(f"9{n:08d}"), "applicant_id_number": f"10{n:08d}"}
     assert client.patch("/applications/current", headers=_h(token), json=fields).status_code == 200
     factories.attach_required_documents(client, token)
     if send:

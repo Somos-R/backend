@@ -29,10 +29,10 @@ def bo(client, admin):
 @pytest.fixture
 def w(db):
     eca = factories.make_organization(db, "eca", legal_name="ECA Ñandú", tax_id="900111222-1", city="Cali")
-    other_eca = factories.make_organization(db, "eca", legal_name="ECA Beta", tax_id="900111333-1")
-    assoc = factories.make_organization(db, "association", legal_name="Asociación Xenón", tax_id="900222333-1",
+    other_eca = factories.make_organization(db, "eca", legal_name="ECA Beta", tax_id="900111333-9")
+    assoc = factories.make_organization(db, "association", legal_name="Asociación Xenón", tax_id="900222333-5",
                                         city="Bogotá", legal_representative="Rep Legal")
-    pending = factories.make_organization(db, "association", legal_name="Asociación Nueva", tax_id="900444555-1",
+    pending = factories.make_organization(db, "association", legal_name="Asociación Nueva", tax_id="900444555-6",
                                           status=OrganizationStatus.submitted)
     warehouse = db.query(Warehouse).order_by(Warehouse.name).first()
     warehouse.organization_id = eca.id

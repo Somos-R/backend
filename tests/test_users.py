@@ -48,7 +48,7 @@ class TestUpdateUser:
         assert r.json()["full_name"] == citizen.full_name
 
     def test_not_found(self, client_as, eca_admin):
-        r = client_as(eca_admin).patch(f"/users/{MISSING_ID}", json={"phone": "1"})
+        r = client_as(eca_admin).patch(f"/users/{MISSING_ID}", json={"phone": "3001234567"})
         assert r.status_code == 404
 
     def test_duplicate_tax_id_conflicts(self, client_as, db):

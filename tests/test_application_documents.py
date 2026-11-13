@@ -23,7 +23,7 @@ PDF = factories.PDF
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 32
 COMPLETE = {
-    "tax_id": "900123456-7", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
+    "tax_id": "900123456-8", "legal_representative": "Rep Legal", "contact_email": "contacto@org.org",
     "contact_phone": "3150000000", "address": "Calle 1 # 2-3", "city": "Bogotá",
     "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567",
 }

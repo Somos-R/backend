@@ -19,7 +19,7 @@ def t(db, client_as, eca_admin, warehouse):
     for kg, days in (("30", 1), ("10", 10), ("20", 20)):
         r = client_as(eca_admin).post("/transactions", json={
             "material_code": "plastic", "warehouse_id": str(warehouse.id), "kg": kg, "price_per_kg": "900",
-            "buyer_name": "Industrias Verdes", "buyer_nit": "901234567-8"})
+            "buyer_name": "Industrias Verdes", "buyer_nit": "901234567-7"})
         assert r.status_code == 201, r.text
         ids.append(r.json()["id"])
         db.get(Transaction, ids[-1]).occurred_at = datetime.now(timezone.utc) - timedelta(days=days)
@@ -103,7 +103,7 @@ class TestExport:
         factories.stock(db, warehouse, kg="100")
         client_as(eca_admin).post("/transactions", json={
             "material_code": "plastic", "warehouse_id": str(warehouse.id), "kg": "5", "price_per_kg": "900",
-            "buyer_name": "=HYPERLINK(\"http://x\")", "buyer_nit": "901234567-8"})
+            "buyer_name": "=HYPERLINK(\"http://x\")", "buyer_nit": "901234567-7"})
         assert "'=HYPERLINK" in client_as(eca_admin).get("/transactions/export.csv").text
 
     def test_too_many_rows_is_refused_not_truncated(self, client_as, eca_admin, t, monkeypatch):

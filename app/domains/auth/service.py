@@ -19,6 +19,7 @@ from app.domains.audit import service as audit
 from app.domains.audit.actions import FAILURE, Action
 from app.domains.auth.models import OneTimeToken, RefreshToken, RevokedToken
 from app.domains.catalogs.models import Role
+from app.domains.catalogs.service import ensure_document_type_is_active
 from app.domains.organizations.enums import OrganizationStatus, OrganizationType
 from app.domains.organizations.models import Organization
 from app.domains.users.enums import VerificationStatus
@@ -354,6 +355,7 @@ def ensure_registration_is_open(user_type_code: str, actor: User | None) -> None
 def register_user(db: Session, data: dict, actor: User | None) -> tuple[User, str | None]:
     """Create an account. Returns the user and the email-verification token to send (if any)."""
     ensure_registration_is_open(data["user_type_code"], actor)
+    ensure_document_type_is_active(db, data["id_type"])
     role_code = data.get("role_code")
     if role_code is not None:
         # Roles are handed out by an organization admin, never self-assigned.

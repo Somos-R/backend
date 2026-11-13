@@ -14,7 +14,7 @@ def _sale_payload(warehouse, **overrides):
         "kg": "40",
         "price_per_kg": "900",
         "buyer_name": "Industrias Verdes",
-        "buyer_nit": "901234567-8",
+        "buyer_nit": "901234567-7",
     }
     payload.update(overrides)
     return payload

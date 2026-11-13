@@ -25,6 +25,12 @@ El campo **`user_type_code`** determina qué schema se aplica y qué campos adic
 - `association` → `association_nit`, `legal_representative`
 - `b2b_client` → `company_name`, `tax_id`
 
+**Formatos:** `phone` lleva de 7 a 15 dígitos, con `+` opcional al inicio (se quitan espacios, puntos, guiones y
+paréntesis). Un NIT (`association_nit`, `tax_id`) va con su dígito de verificación separado por guion
+(`900123456-8`) y se comprueba ese dígito. Un formato inválido responde `422`.
+
+`id_type` debe existir y estar activo en `GET /catalogs/document-types`; si no, `422 invalid_id_type`.
+
 **Las ECA y las asociaciones NO se registran solas** (`403 registration_closed`): una organización pide unirse
 con `POST /applications` y Somos R la aprueba; al aprobarla se crea su primer administrador. Por este endpoint
 solo se crean `eca` y `association` cuando **quien llama es el administrador** (`eca_admin` o `association_admin`)

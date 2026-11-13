@@ -16,7 +16,7 @@ from tests import factories
 
 COMPLETE = {
     "legal_representative": "Rep Legal", "contact_email": "contacto@asociacion.org", "contact_phone": "3150000000",
-    "address": "Calle 1 # 2-3", "city": "Bogotá", "tax_id": "900123456-7",
+    "address": "Calle 1 # 2-3", "city": "Bogotá", "tax_id": "900123456-8",
     "applicant_id_type": "CC", "applicant_id_number": "1020304050", "applicant_phone": "3001234567",
 }
 
@@ -105,13 +105,13 @@ class TestStarting:
         assert len(db.scalars(select(OrganizationApplication)).all()) == 2
 
     def test_a_tax_id_of_an_operating_organization_is_refused(self, client, db):
-        factories.make_organization(db, "association", tax_id="900123456-7")
-        r = _start(client, tax_id="900123456-7")
+        factories.make_organization(db, "association", tax_id="900123456-8")
+        r = _start(client, tax_id="900123456-8")
         assert r.status_code == 409 and r.json()["code"] == "organization_already_registered"
 
     def test_a_draft_cannot_squat_a_tax_id(self, client, db, outbox):
-        _start(client, tax_id="900123456-7")
-        r = _start(client, applicant_email="otra@asociacion.org", tax_id="900123456-7")
+        _start(client, tax_id="900123456-8")
+        r = _start(client, applicant_email="otra@asociacion.org", tax_id="900123456-8")
         assert r.status_code == 202  # two requests may claim it; the reviewer decides, the operating one is unique
 
     @pytest.mark.parametrize("body", [{"type": "citizen"}, {"legal_name": "x"}, {"applicant_email": "no-es-correo"}])
@@ -233,8 +233,8 @@ class TestEditing:
         assert r.status_code == 200 and body["type"] == "association" and body["applicant_email"] == "laura@asociacion.org"
 
     def test_a_tax_id_of_an_operating_organization_is_refused(self, client, db, started):
-        factories.make_organization(db, "association", tax_id="900999888-1")
-        r = client.patch("/applications/current", headers=_auth(started), json={"tax_id": "900999888-1"})
+        factories.make_organization(db, "association", tax_id="900999888-5")
+        r = client.patch("/applications/current", headers=_auth(started), json={"tax_id": "900999888-5"})
         assert r.status_code == 409 and r.json()["code"] == "organization_already_registered"
 
     def test_the_audit_names_the_fields_not_their_values(self, client, db, started):
@@ -328,9 +328,9 @@ class TestSending:
 
 class TestTheDatabaseRule:
     def test_two_requests_may_share_a_tax_id_but_an_operating_organization_is_unique(self, db):
-        factories.make_organization(db, "association", tax_id="900555000-1", status=OrganizationStatus.draft)
-        factories.make_organization(db, "association", tax_id="900555000-1", status=OrganizationStatus.submitted)
-        factories.make_organization(db, "association", tax_id="900555000-1")  # approved
+        factories.make_organization(db, "association", tax_id="900555000-7", status=OrganizationStatus.draft)
+        factories.make_organization(db, "association", tax_id="900555000-7", status=OrganizationStatus.submitted)
+        factories.make_organization(db, "association", tax_id="900555000-7")  # approved
         with pytest.raises(IntegrityError):
-            factories.make_organization(db, "association", tax_id="900555000-1")  # a second approved one
+            factories.make_organization(db, "association", tax_id="900555000-7")  # a second approved one
         db.rollback()

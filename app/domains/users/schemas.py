@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.identifiers import OptionalNit, OptionalPhone
 from app.core.passwords import Email
 from app.domains.organizations.schemas import OrganizationRef
 from app.domains.users.enums import VerificationStatus
@@ -16,7 +17,7 @@ class UpdateUserRequest(BaseModel):
 
     # Common
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
-    phone: str | None = Field(default=None, max_length=20)
+    phone: OptionalPhone = None
     role_code: str | None = Field(default=None, max_length=20)
 
     # citizen / building
@@ -38,12 +39,12 @@ class UpdateUserRequest(BaseModel):
     permissions: dict | None = None
 
     # association
-    association_nit: str | None = Field(default=None, max_length=50)
+    association_nit: OptionalNit = None
     legal_representative: str | None = Field(default=None, max_length=255)
 
     # b2b_client
     company_name: str | None = Field(default=None, max_length=255)
-    tax_id: str | None = Field(default=None, max_length=50)
+    tax_id: OptionalNit = None
     commercial_contact: str | None = Field(default=None, max_length=255)
     rep_goals: dict | None = None
 
@@ -156,7 +157,7 @@ class InviteStaffRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=255)
     id_type: str = Field(min_length=1, max_length=10)
     id_number: str = Field(min_length=3, max_length=20)
-    phone: str | None = Field(default=None, max_length=20)
+    phone: OptionalPhone = None
     role_code: str = Field(min_length=1, max_length=20)
 
     model_config = ConfigDict(
