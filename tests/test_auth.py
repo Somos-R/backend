@@ -1,4 +1,4 @@
-"""Characterization tests for /auth and /catalogs: they pin current behavior."""
+"""Characterization tests for /auth: they pin current behavior. The public catalogs live in test_catalogs.py."""
 from app.domains.users.enums import VerificationStatus
 from app.domains.users.models import User
 from tests import factories
@@ -155,18 +155,6 @@ class TestSession:
         r = client.get("/users", headers=headers)
         assert r.status_code == 401
         assert "cerrada" in r.json()["detail"]
-
-
-class TestCatalogs:
-    def test_document_types(self, client):
-        r = client.get("/catalogs/document-types")
-        assert r.status_code == 200
-        assert {"CC", "NIT"} <= {d["code"] for d in r.json()}
-
-    def test_roles(self, client):
-        r = client.get("/catalogs/roles")
-        assert r.status_code == 200
-        assert "eca_admin" in {d["code"] for d in r.json()}
 
 
 def test_health(client):
