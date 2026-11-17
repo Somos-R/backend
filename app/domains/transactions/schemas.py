@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.passwords import Email
 from app.domains.inventory.schemas import MaterialResponse, WarehouseResponse
 from app.domains.transactions.models import TransactionStatus, TransactionType
 
@@ -47,14 +48,15 @@ class TransactionListResponse(BaseModel):
 
 
 class CreateSaleRequest(BaseModel):
-    material_code: str
+    # Lengths are those of the columns: a longer value is a 422 here, not an error inside the database.
+    material_code: str = Field(min_length=1, max_length=30)
     warehouse_id:  uuid.UUID
     # Two decimals at most and the width of the columns: what is stored is exactly what was sent.
     kg:            Decimal = Field(max_digits=10, decimal_places=2)
     price_per_kg:     Decimal = Field(max_digits=10, decimal_places=2)
-    buyer_name:    str | None = None
-    buyer_nit:     str | None = None
-    buyer_email:   str | None = None
+    buyer_name:    str | None = Field(default=None, max_length=255)
+    buyer_nit:     str | None = Field(default=None, max_length=20)
+    buyer_email:   Email | None = None
 
     @field_validator("kg", "price_per_kg")
     @classmethod

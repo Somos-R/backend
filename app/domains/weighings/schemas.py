@@ -76,7 +76,7 @@ class CreateWeighingRequest(BaseModel):
 
     recycler_id:   uuid.UUID | None = None
     seller:        SellerInput | None = None
-    material_code: str
+    material_code: str = Field(min_length=1, max_length=30)  # the width of `materials.code`
     warehouse_id:  uuid.UUID
     # Two decimals at most, like the columns: what is stored is exactly what was sent, so the integrity hash
     # of the weighing can never differ from the stored value because of a rounding.

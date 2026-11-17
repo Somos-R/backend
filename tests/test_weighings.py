@@ -51,6 +51,12 @@ class TestCreate:
             "/weighings", json=_payload(recycler, warehouse, material_code="unobtanium"))
         assert r.status_code == 404
 
+    @pytest.mark.parametrize("material_code", ["", "x" * 31])
+    def test_material_code_longer_than_the_catalog_column_is_a_422(
+            self, client_as, eca_admin, recycler, warehouse, material_code):
+        r = client_as(eca_admin).post("/weighings", json=_payload(recycler, warehouse, material_code=material_code))
+        assert r.status_code == 422
+
     def test_unknown_warehouse(self, client_as, eca_admin, recycler, warehouse):
         r = client_as(eca_admin).post(
             "/weighings", json=_payload(recycler, warehouse, warehouse_id=MISSING_ID))
