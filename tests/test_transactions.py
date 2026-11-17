@@ -1,6 +1,8 @@
 """Characterization tests for /transactions (sales and the purchase lifecycle)."""
 from decimal import Decimal
 
+import pytest
+
 from app.domains.inventory.models import InventoryItem
 from tests import factories
 
@@ -58,6 +60,24 @@ class TestCreateSale:
             r = client_as(eca_admin).post(
                 "/transactions", json=_sale_payload(warehouse, **{field: "0"}))
             assert r.status_code == 422
+
+    @pytest.mark.parametrize("field, value", [
+        ("material_code", "x" * 31), ("material_code", ""), ("buyer_name", "x" * 256),
+        ("buyer_nit", "9" * 21), ("buyer_email", "not-an-email"), ("buyer_email", "a" * 250 + "@x.co"),
+    ])
+    def test_buyer_and_material_fields_are_refused_before_touching_stock(
+            self, client_as, eca_admin, db, warehouse, field, value):
+        factories.stock(db, warehouse, kg="100")
+        r = client_as(eca_admin).post("/transactions", json=_sale_payload(warehouse, **{field: value}))
+        assert r.status_code == 422
+        assert _stock_kg(db, warehouse) == Decimal("100")
+
+    def test_buyer_fields_at_the_column_width_and_email_normalized(self, client_as, eca_admin, db, warehouse):
+        factories.stock(db, warehouse, kg="100")
+        r = client_as(eca_admin).post("/transactions", json=_sale_payload(
+            warehouse, buyer_name="x" * 255, buyer_nit="9" * 20, buyer_email="  Compras@Industria.CO "))
+        assert r.status_code == 201, r.text
+        assert r.json()["buyer_email"] == "compras@industria.co"
 
 
 class TestReadEndpoints:
