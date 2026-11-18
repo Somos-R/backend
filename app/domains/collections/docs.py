@@ -15,6 +15,8 @@ el cuerpo no lleva `citizen_id` ni `requester_id`.
   motor de rutas.
 - `materials`: de 1 a 10 códigos activos del catálogo de materiales (hoy `paper`, `plastic`, `glass`, `metal`,
   `cardboard`, `electronic`, `organic`); los repetidos se ignoran.
+- `bag_count` (opcional): cuántas bolsas hay para recoger, de 1 a 100. Sirve sobre todo a conjuntos y JAC para
+  dimensionar la recolección; `null` si no se indica.
 - `scheduled_date` (opcional): no puede ser anterior a hoy (hora de Colombia).
 
 Errores: `404 material_not_found`, `400 material_inactive`, `422 scheduled_date_in_past`, `422 validation_error`.

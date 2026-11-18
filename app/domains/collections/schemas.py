@@ -8,6 +8,7 @@ from app.domains.collections.models import CollectionStatus
 from app.domains.inventory.schemas import unique_material_codes
 
 MAX_MATERIALS = 10
+MAX_BAGS = 100
 
 
 class RejectionReasonResponse(BaseModel):
@@ -29,6 +30,7 @@ class CollectionResponse(BaseModel):
     longitude:           Decimal
     materials:           list[str]
     notes:               str | None
+    bag_count:           int | None
     scheduled_date:      date | None
     cancellation_reason: str | None
     cancelled_at:        datetime | None
@@ -62,6 +64,7 @@ class CreateCollectionRequest(BaseModel):
     longitude:      Decimal = Field(ge=-180, le=180, max_digits=9, decimal_places=6)
     materials:      list[str] = Field(min_length=1, max_length=MAX_MATERIALS)
     notes:          str | None = Field(default=None, max_length=500)
+    bag_count:      int | None = Field(default=None, ge=1, le=MAX_BAGS)
     scheduled_date: date | None = None
 
     model_config = ConfigDict(
@@ -72,6 +75,7 @@ class CreateCollectionRequest(BaseModel):
                 "longitude": -74.065,
                 "materials": ["paper", "plastic"],
                 "notes": "Portería, preguntar por la administración",
+                "bag_count": 4,
                 "scheduled_date": "2026-11-10",
             }]
         }
