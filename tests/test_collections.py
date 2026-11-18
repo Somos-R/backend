@@ -42,6 +42,15 @@ class TestCreate:
         assert body["requester_id"] == str(citizen.id)
         assert body["materials"] == ["paper", "plastic"]
         assert body["scheduled_date"] is None and body["cancelled_at"] is None
+        assert body["bag_count"] is None
+
+    def test_a_building_says_how_many_bags_it_has(self, client_as, db):
+        building = factories.make_user(db, "building")
+        created = _create(client_as(building), bag_count=12)
+        assert created.status_code == 201 and created.json()["bag_count"] == 12
+        detail = client_as(building).get(f"/collections/{created.json()['id']}").json()
+        assert detail["bag_count"] == 12
+        assert db.get(Collection, uuid.UUID(created.json()["id"])).bag_count == 12
 
     def test_a_building_may_ask_too(self, client_as, db):
         building = factories.make_user(db, "building")
@@ -98,6 +107,10 @@ class TestCreate:
         {"latitude": "4.1234567"},
         {"address": "abc"},
         {"notes": "x" * 501},
+        {"bag_count": 0},
+        {"bag_count": -1},
+        {"bag_count": 101},
+        {"bag_count": 2.5},
     ])
     def test_invalid_bodies_are_refused(self, client_as, citizen, changes):
         r = _create(client_as(citizen), **changes)

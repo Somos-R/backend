@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Numeric,
+    SmallInteger,
     String,
     Text,
     func,
@@ -54,6 +55,7 @@ class Collection(Base):
         CheckConstraint("longitude BETWEEN -180 AND 180", name="ck_collections_longitude_range"),
         CheckConstraint("(status = 'rejected') = (rejection_reason_code IS NOT NULL)",
                         name="ck_collections_rejected_has_reason"),
+        CheckConstraint("bag_count > 0", name="ck_collections_bag_count_positive"),
         # A requester's own history filtered by state, newest first.
         Index("ix_collections_requester_status_created", "requester_id", "status", "created_at"),
     )
@@ -72,6 +74,9 @@ class Collection(Base):
     # Codes of the `materials` catalog the requester says they have.
     materials:    Mapped[list[str]]        = mapped_column(JSONB, nullable=False)
     notes:        Mapped[str | None]       = mapped_column(Text, nullable=True)
+    # How many bags the requester says they have: what a building or a JAC sizes its request with. Null when the
+    # requester did not say.
+    bag_count:    Mapped[int | None]       = mapped_column(SmallInteger, nullable=True)
     scheduled_date: Mapped[date | None]    = mapped_column(Date, nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancelled_at: Mapped[datetime | None]  = mapped_column(DateTime(timezone=True), nullable=True)

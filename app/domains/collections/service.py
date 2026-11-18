@@ -101,6 +101,7 @@ def create_collection(
         location=point(request.latitude, request.longitude),
         materials=request.materials,
         notes=request.notes,
+        bag_count=request.bag_count,
         scheduled_date=request.scheduled_date,
         client_created_at=client_created_at,
     )
