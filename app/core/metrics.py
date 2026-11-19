@@ -9,7 +9,7 @@ With several uvicorn workers each process has its own counters; set PROMETHEUS_M
 import hmac
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -54,8 +54,9 @@ def _registry():
 def require_metrics_token(request: Request) -> None:
     expected = settings.metrics_token
     if not expected:
-        # Not configured: pretend the endpoint does not exist rather than advertise it.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        # Not configured: pretend the endpoint does not exist rather than advertise it. The body is
+        # the one an unknown route gets, so the two cannot be told apart.
+        raise ApiError("not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
 
     header = request.headers.get("authorization", "")
     supplied = header[7:] if header.lower().startswith("bearer ") else ""

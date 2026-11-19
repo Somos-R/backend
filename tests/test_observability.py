@@ -258,8 +258,10 @@ class TestMetricsEndpoint:
 
     def test_it_does_not_exist_until_a_token_is_configured(self, api):
         c = api(metrics_token=None)
-        assert c.get("/metrics").status_code == 404
-        assert self._scrape(c).status_code == 404
+        unknown_route = c.get("/does-not-exist")
+        for r in (c.get("/metrics"), self._scrape(c)):
+            assert r.status_code == 404
+            assert r.json() == unknown_route.json() == {"detail": "Not Found", "code": "not_found"}
 
     @pytest.mark.parametrize("header", [None, "Bearer wrong", "wrong", "Basic abc", "Bearer "])
     def test_wrong_or_missing_credentials_are_rejected(self, api, header):
