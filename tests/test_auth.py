@@ -151,7 +151,9 @@ class TestSession:
         ).json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        assert client.post("/auth/logout", headers=headers).status_code == 200
+        r = client.post("/auth/logout", headers=headers)
+        assert r.status_code == 200
+        assert r.json() == {"message": "Sesión cerrada exitosamente"}
         r = client.get("/users", headers=headers)
         assert r.status_code == 401
         assert "cerrada" in r.json()["detail"]

@@ -59,14 +59,13 @@ def _calls(source: str, name: str):
         yield source[match.end():i - 1]
 
 
-def test_no_endpoint_raises_a_bare_http_exception_with_a_message():
-    """New errors must use ApiError (with a code), not a bare HTTPException carrying a detail."""
+def test_no_endpoint_raises_a_bare_http_exception():
+    """Errors must use ApiError (with a code), never a bare HTTPException, with or without a detail."""
     app_dir = pathlib.Path(__file__).resolve().parent.parent / "app"
     offenders = sorted(
         str(path.relative_to(app_dir))
         for path in app_dir.rglob("*.py")
         if path.name != "errors.py"
-        for call in _calls(path.read_text(encoding="utf-8"), "HTTPException")
-        if "detail=" in call
+        if next(_calls(path.read_text(encoding="utf-8"), "HTTPException"), None) is not None
     )
     assert not offenders, f"use ApiError(code, ...) instead of HTTPException in: {offenders}"

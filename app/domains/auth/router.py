@@ -58,14 +58,14 @@ def me(actor: User = Depends(get_current_user)):
     return MeResponse(**data, capabilities=capabilities_for(actor))
 
 
-@router.post("/logout", status_code=status.HTTP_200_OK, **LOGOUT_DOCS)
+@router.post("/logout", response_model=MessageResponse, status_code=status.HTTP_200_OK, **LOGOUT_DOCS)
 def logout(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
     auth_service.logout(db, actor, decode_access_token(credentials.credentials))
-    return {"message": "Sesión cerrada exitosamente"}
+    return MessageResponse(message="Sesión cerrada exitosamente")
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED, **REGISTER_DOCS)
