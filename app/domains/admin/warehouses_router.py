@@ -1,22 +1,14 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.errors import ApiError
 from app.core.network import enforce_admin_network
-from app.core.pagination import paginate
 from app.core.rate_limit import admin_limit, limiter
 from app.core.security import require_capability
 from app.domains.admin import catalogs_service
-from app.domains.audit import service as audit
-from app.domains.audit.actions import Action
-from app.domains.inventory.models import Warehouse
-from app.domains.organizations.enums import OrganizationStatus, OrganizationType
-from app.domains.organizations.models import Organization
 from app.domains.users.models import User
 
 router = APIRouter(prefix="/admin/warehouses", tags=["admin"], dependencies=[Depends(enforce_admin_network)])
@@ -68,12 +60,7 @@ def list_warehouses(
     _: User = Manager,
 ):
     """Every warehouse, across ECAs. Warehouses with no owner are invisible to customers until assigned."""
-    query = select(Warehouse)
-    if organization_id is not None:
-        query = query.where(Warehouse.organization_id == organization_id)
-    if unassigned is not None:
-        query = query.where(Warehouse.organization_id.is_(None) if unassigned else Warehouse.organization_id.is_not(None))
-    total, items = paginate(db, query, Warehouse.name, Warehouse.id, limit=limit, offset=offset)
+    total, items = catalogs_service.list_warehouses(db, organization_id, unassigned, limit=limit, offset=offset)
     return AdminWarehouseList(total=total, limit=limit, offset=offset, items=items)
 
 
@@ -86,28 +73,8 @@ def assign_owner(
     db: Session = Depends(get_db),
     actor: User = Manager,
 ):
-    """Give an owner ECA to a warehouse that has none. An owner cannot be changed: that would hand the
-    warehouse's inventory and history to another organization."""
-    warehouse = db.get(Warehouse, warehouse_id)
-    if warehouse is None:
-        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
-    if warehouse.organization_id is not None:
-        raise ApiError("already_owned", status_code=status.HTTP_409_CONFLICT, detail="Esta bodega ya tiene dueña")
-    organization = db.get(Organization, body.organization_id)
-    if organization is None:
-        raise ApiError("organization_not_found", status_code=status.HTTP_404_NOT_FOUND,
-                       detail="Organización no encontrada")
-    if organization.type != OrganizationType.eca:
-        raise ApiError("organization_type_mismatch", status_code=422, detail="Una bodega pertenece a una ECA")
-    if organization.status != OrganizationStatus.approved:
-        raise ApiError("organization_not_active", status_code=status.HTTP_409_CONFLICT,
-                       detail="La organización no está aprobada")
-    warehouse.organization_id = organization.id
-    audit.record(db, Action.WAREHOUSE_ORGANIZATION_ASSIGNED, actor=actor, target_type="warehouse",
-                 target_id=warehouse.id, details={"organization_id": str(organization.id)})
-    db.commit()
-    db.refresh(warehouse)
-    return warehouse
+    """Give an owner ECA to a warehouse that has none. An owner cannot be changed."""
+    return catalogs_service.assign_warehouse_organization(db, actor, warehouse_id, body.organization_id)
 
 
 @router.patch("/{warehouse_id}", response_model=AdminWarehouse)
