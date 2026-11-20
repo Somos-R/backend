@@ -13,12 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.core.pagination import paginate
 from app.domains.applications.models import OrganizationDocumentType
 from app.domains.audit import service as audit
 from app.domains.audit.actions import Action
 from app.domains.catalogs.models import DocumentType
 from app.domains.inventory.models import Material, Warehouse
-from app.domains.organizations.enums import OrganizationType
+from app.domains.organizations.enums import OrganizationStatus, OrganizationType
+from app.domains.organizations.models import Organization
 from app.domains.users.models import User
 
 MATERIAL_CODE = re.compile(r"^[a-z][a-z0-9_]{1,29}$")
@@ -66,13 +68,48 @@ def update_entry(
     return entry
 
 
+def list_warehouses(
+    db: Session, organization_id: uuid.UUID | None, unassigned: bool | None, limit: int, offset: int,
+) -> tuple[int, list[Warehouse]]:
+    """Every warehouse, across ECAs; `unassigned` keeps only those with (False) or without (True) an owner."""
+    query = select(Warehouse)
+    if organization_id is not None:
+        query = query.where(Warehouse.organization_id == organization_id)
+    if unassigned is not None:
+        query = query.where(Warehouse.organization_id.is_(None) if unassigned else Warehouse.organization_id.is_not(None))
+    return paginate(db, query, Warehouse.name, Warehouse.id, limit=limit, offset=offset)
+
+
+def assign_warehouse_organization(
+    db: Session, actor: User, warehouse_id: uuid.UUID, organization_id: uuid.UUID,
+) -> Warehouse:
+    """Give an owner ECA to a warehouse that has none. An owner cannot be changed: that would hand the
+    warehouse's inventory and history to another organization."""
+    warehouse = _get_warehouse(db, warehouse_id)
+    if warehouse.organization_id is not None:
+        raise ApiError("already_owned", status_code=status.HTTP_409_CONFLICT, detail="Esta bodega ya tiene dueña")
+    organization = db.get(Organization, organization_id)
+    if organization is None:
+        raise ApiError("organization_not_found", status_code=status.HTTP_404_NOT_FOUND,
+                       detail="Organización no encontrada")
+    if organization.type != OrganizationType.eca:
+        raise ApiError("organization_type_mismatch", status_code=422, detail="Una bodega pertenece a una ECA")
+    if organization.status != OrganizationStatus.approved:
+        raise ApiError("organization_not_active", status_code=status.HTTP_409_CONFLICT,
+                       detail="La organización no está aprobada")
+    warehouse.organization_id = organization.id
+    audit.record(db, Action.WAREHOUSE_ORGANIZATION_ASSIGNED, actor=actor, target_type="warehouse",
+                 target_id=warehouse.id, details={"organization_id": str(organization.id)})
+    db.commit()
+    db.refresh(warehouse)
+    return warehouse
+
+
 def update_warehouse(
     db: Session, actor: User, warehouse_id: uuid.UUID, fields: dict[str, Any],
 ) -> Warehouse:
     """`fields` carries only what the request set (an address may be cleared with an explicit null)."""
-    warehouse = db.get(Warehouse, warehouse_id)
-    if warehouse is None:
-        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
+    warehouse = _get_warehouse(db, warehouse_id)
     if "name" in fields:
         fields["name"] = fields["name"].strip()
     changes = _apply(warehouse, **fields)
@@ -81,6 +118,13 @@ def update_warehouse(
                      details={"changes": changes})
     db.commit()
     db.refresh(warehouse)
+    return warehouse
+
+
+def _get_warehouse(db: Session, warehouse_id: uuid.UUID) -> Warehouse:
+    warehouse = db.get(Warehouse, warehouse_id)
+    if warehouse is None:
+        raise ApiError("warehouse_not_found", status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada")
     return warehouse
 
 
